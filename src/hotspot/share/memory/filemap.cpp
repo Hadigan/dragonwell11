@@ -1512,6 +1512,7 @@ ClassPathEntry* FileMapInfo::get_classpath_entry_for_jvmti(int i, InstanceKlass 
   return ent;
 }
 
+<<<<<<< HEAD
 ClassPathEntry* FileMapInfo::get_unregistered_classpath_entry_for_jvmti(InstanceKlass *klass, TRAPS) {
   assert(EagerAppCDS, "only custom classloaders go here");
   assert(UseSharedSpaces, "must be");
@@ -1547,6 +1548,8 @@ ClassPathEntry* FileMapInfo::get_unregistered_classpath_entry_for_jvmti(Instance
   return ent;
 }
 
+=======
+>>>>>>> dragonwell_extended_upstream/master
 ClassFileStream* FileMapInfo::open_stream_for_jvmti(InstanceKlass* ik, Handle class_loader, TRAPS) {
   int path_index = ik->shared_classpath_index();
   assert((EagerAppCDS && path_index == UNREGISTERED_INDEX) || path_index >= 0, "should be called for shared built-in classes only");
@@ -1561,6 +1564,7 @@ ClassFileStream* FileMapInfo::open_stream_for_jvmti(InstanceKlass* ik, Handle cl
                                                                       name->utf8_length());
   ClassLoaderData* loader_data = ClassLoaderData::class_loader_data(class_loader());
   ClassFileStream* cfs = cpe->open_stream_for_loader(file_name, loader_data, THREAD);
+<<<<<<< HEAD
   assert(cfs != NULL, "must be able to read the classfile data of shared classes for built-in loaders: %s %s.", cpe->name(), file_name);
   if (path_index == UNREGISTERED_INDEX) {
     assert(EagerAppCDS, "sanity");
@@ -1578,6 +1582,12 @@ void FileMapInfo::init_unregistered_classpath_entry_for_jvmti(int entry_len) {
   int sz = sizeof(ClassPathEntry*) * entry_len;
   _unregistered_classpath_entries_for_jvmti = (ClassPathEntry**)os::malloc(sz, mtClass);
   memset(_unregistered_classpath_entries_for_jvmti, 0, sz);
+=======
+  assert(cfs != NULL, "must be able to read the classfile data of shared classes for built-in loaders.");
+  log_debug(cds, jvmti)("classfile data for %s [%d: %s] = %d bytes", class_name, path_index,
+                        cfs->source(), cfs->length());
+  return cfs;
+>>>>>>> dragonwell_extended_upstream/master
 }
 
 #endif
