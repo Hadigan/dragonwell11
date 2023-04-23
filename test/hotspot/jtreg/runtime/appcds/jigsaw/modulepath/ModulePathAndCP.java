@@ -107,11 +107,7 @@ public class ModulePathAndCP {
                                         "--module-path", moduleDir.toString(),
                                         "-m", MAIN_MODULE);
         TestCommon.checkDump(output);
-<<<<<<< HEAD
         String prefix[] = {"-Djava.class.path=", "-Xlog:class+load=trace"};
-=======
-        String prefix[] = {"-cp", "\"\"", "-Xlog:class+load=trace"};
->>>>>>> dragonwell_extended_upstream/master
         prefix = TestCommon.concat(prefix, extra_runtime_args);
 
         // run with the archive with the --module-path the same as the one during

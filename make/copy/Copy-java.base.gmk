@@ -191,7 +191,6 @@ $(eval $(call SetupCopyFiles, COPY_NET_PROPERTIES, \
 
 TARGETS += $(COPY_NET_PROPERTIES)
 
-<<<<<<< HEAD
 ################################################################################
 
 $(eval $(call SetupCopyFiles, COPY_QUICKSTART_PROPERTIES, \
@@ -210,11 +209,9 @@ $(eval $(call SetupCopyFiles, COPY_WISP_PROPERTIES, \
 
 TARGETS += $(COPY_WISP_PROPERTIES)
 
+################################################################################
 
-ifeq ($(OPENJDK_TARGET_OS), solaris)
-=======
 ifeq ($(call isTargetOs, solaris), true)
->>>>>>> dragonwell_extended_upstream/master
   $(eval $(call SetupCopyFiles, COPY_SDP_CONF, \
       FILES := $(TOPDIR)/src/java.base/$(OPENJDK_TARGET_OS_TYPE)/conf/sdp/sdp.conf.template, \
       DEST := $(CONF_DST_DIR)/sdp, \

@@ -145,10 +145,7 @@ public:
   virtual ~ClassPathImageEntry();
   ClassFileStream* open_stream(const char* name, TRAPS);
   ClassFileStream* open_stream_for_loader(const char* name, ClassLoaderData* loader_data, TRAPS);
-<<<<<<< HEAD
 
-=======
->>>>>>> dragonwell_extended_upstream/master
   // Debugging
   NOT_PRODUCT(void compile_the_world(Handle loader, TRAPS);)
 };

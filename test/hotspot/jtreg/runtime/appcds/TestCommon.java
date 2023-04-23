@@ -199,12 +199,8 @@ public class TestCommon extends CDSTestUtils {
             }
         }
 
-<<<<<<< HEAD
         String[] cmdLine = cmd.toArray(new String[cmd.size()]);
         ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(true, makeCommandLineForAppCDS(cmdLine));
-=======
-        ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(true, cmd);
->>>>>>> dragonwell_extended_upstream/master
         return executeAndLog(pb, "exec");
     }
 
