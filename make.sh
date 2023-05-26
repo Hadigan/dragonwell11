@@ -58,7 +58,7 @@ if [ 0 != $? ]; then
   exit 1
 fi
 
-make CONF=${BUILD_MODE} LOG=cmdlines JOBS=8 images
+make CONF=${BUILD_MODE} LOG=cmdlines JOBS=128 images
 
 if [ 0 != $? ]; then
   echo 'Build failed!'
