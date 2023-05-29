@@ -400,11 +400,13 @@ class BufferBlob: public RuntimeBlob {
   // delete rather than an ordinary sized delete; see C++14 3.7.4.2/p2.
   void operator delete(void* p);
   void* operator new(size_t s, unsigned size) throw();
+  void* operator new(size_t s, unsigned size, int code_blob_type) throw();
 
  public:
   // Creation
   static BufferBlob* create(const char* name, int buffer_size);
   static BufferBlob* create(const char* name, CodeBuffer* cb);
+  static BufferBlob* create(const char* name, int buffer_size, int code_blob_type);
 
   static void free(BufferBlob* buf);
 
@@ -444,7 +446,8 @@ private:
 public:
   // Creation
   static VtableBlob* create(const char* name, int buffer_size);
-
+  static VtableBlob* create(const char* name, int buffer_size, int code_blob_type);
+  
   // Typing
   virtual bool is_vtable_blob() const { return true; }
 };

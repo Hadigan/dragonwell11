@@ -143,6 +143,10 @@ class CodeHeap : public CHeapObj<mtCode> {
 
   // to perform additional actions on creation of executable code
   void on_code_mapping(char* base, size_t size);
+  HeapBlock* search_block_in_freelist(size_t begin, size_t end);
+  HeapBlock* split_block_with_range(FreeBlock *b, size_t begin, size_t end, FreeBlock* prev);
+  HeapBlock* create_new_freeblock(size_t begin, size_t end);
+  HeapBlock* create_new_heapblock(size_t begin, size_t end);
 
  public:
   CodeHeap(const char* name, const int code_blob_type);
@@ -153,6 +157,7 @@ class CodeHeap : public CHeapObj<mtCode> {
 
   // Memory allocation
   void* allocate (size_t size); // Allocate 'size' bytes in the code cache or return NULL
+  void* allocate_at_offset (size_t size, size_t offset);
   void  deallocate(void* p);    // Deallocate memory
   // Free the tail of segments allocated by the last call to 'allocate()' which exceed 'used_size'.
   // ATTENTION: this is only safe to use if there was no other call to 'allocate()' after

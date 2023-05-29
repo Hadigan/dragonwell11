@@ -55,9 +55,28 @@ void* VtableStub::operator new(size_t size, int code_size) throw() {
   // compute real VtableStub size (rounded to nearest word)
   const int real_size = align_up(code_size + (int)sizeof(VtableStub), wordSize);
   // malloc them in chunks to minimize header overhead
-  const int chunk_factor = 32;
-  if (_chunk == NULL || _chunk + real_size > _chunk_end) {
-    const int bytes = chunk_factor * real_size + pd_code_alignment();
+  int chunk_factor = 32;
+
+  //只有第一次分配且打开了MoveVtableToNonProfileCodeHeap 才会走这个路径
+  if (_chunk == NULL && MoveVtableToNonProfileCodeHeap) {
+    chunk_factor = 320;
+    int bytes = chunk_factor * real_size + pd_code_alignment();
+
+   // There is a dependency on the name of the blob in src/share/vm/prims/jvmtiCodeBlobEvents.cpp
+   // If changing the name, update the other file accordingly.
+    VtableBlob* blob = VtableBlob::create("vtable chunks", bytes, CodeBlobType::MethodNonProfiled);
+
+    if (blob == NULL) {
+      return NULL;
+    }
+    _chunk = blob->content_begin();
+    _chunk_end = _chunk + bytes;
+    Forte::register_stub("vtable stub", _chunk, _chunk_end);
+    align_chunk();
+  }
+  else if ( _chunk == NULL || _chunk + real_size > _chunk_end ) {
+    chunk_factor = 32;
+    int bytes = chunk_factor * real_size + pd_code_alignment();
 
    // There is a dependency on the name of the blob in src/share/vm/prims/jvmtiCodeBlobEvents.cpp
    // If changing the name, update the other file accordingly.
@@ -130,6 +149,9 @@ void VtableStubs::initialize() {
     for (int i = 0; i < N; i++) {
       _table[i] = NULL;
     }
+    // 初始化先分配
+    if (MoveVtableToNonProfileCodeHeap) 
+      create_itable_stub(0);
   }
 }
 

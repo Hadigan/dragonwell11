@@ -65,6 +65,11 @@
           "if sweeper timecount > PrintCodeblobTime, print all codeblob info")    \
   experimental(ccstr, CodeblobFilePath, "./jvm.codecache",                        \
           "File path which saves codeblob")                                       \
+  experimental(bool, MoveStubroutinesToNonProfileCodeHeap, false,           \
+          "move stubroutines to nonprofile codeheap")                       \
+  experimental(bool, MoveVtableToNonProfileCodeHeap, false,                 \
+          "move vtable and itable to nonprofile codeheap")                  \
+
   //add new AJDK specific flags here
 
 

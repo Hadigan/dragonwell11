@@ -1069,7 +1069,17 @@ address TemplateInterpreterGenerator::generate_CRC32_updateBytes_entry(AbstractI
     __ andr(sp, r13, -16); // Restore the caller's SP
 
     // We are frameless so we can just jump to the stub.
-    __ b(CAST_FROM_FN_PTR(address, StubRoutines::updateBytesCRC32()));
+    
+    if (MoveStubroutinesToNonProfileCodeHeap) {
+      address fn;
+      fn = CAST_FROM_FN_PTR(address, StubRoutines::updateBytesCRC32());
+      __ mov(rscratch1, fn);
+      __ br(rscratch1);
+    }
+    else {
+      __ b(CAST_FROM_FN_PTR(address, StubRoutines::updateBytesCRC32()));
+    }
+    
 
     // generate a vanilla native entry as the slow path
     __ bind(slow_path);
@@ -1113,7 +1123,16 @@ address TemplateInterpreterGenerator::generate_CRC32C_updateBytes_entry(Abstract
     __ andr(sp, r13, -16); // Restore the caller's SP
 
     // Jump to the stub.
-    __ b(CAST_FROM_FN_PTR(address, StubRoutines::updateBytesCRC32C()));
+    // __ b(CAST_FROM_FN_PTR(address, StubRoutines::updateBytesCRC32C()));
+    if (MoveStubroutinesToNonProfileCodeHeap) {
+      address fn;
+      fn = CAST_FROM_FN_PTR(address, StubRoutines::updateBytesCRC32C());
+      __ mov(rscratch1, fn);
+      __ br(rscratch1);
+    }
+    else {
+      __ b(CAST_FROM_FN_PTR(address, StubRoutines::updateBytesCRC32C()));
+    }
 
     return entry;
   }

@@ -189,7 +189,10 @@ void StubRoutines::initialize1() {
   if (_code1 == NULL) {
     ResourceMark rm;
     TraceTime timer("StubRoutines generation 1", TRACETIME_LOG(Info, startuptime));
-    _code1 = BufferBlob::create("StubRoutines (1)", code_size1);
+    if (MoveStubroutinesToNonProfileCodeHeap)
+      _code1 = BufferBlob::create("StubRoutines (1)", code_size1, CodeBlobType::MethodNonProfiled);
+    else
+      _code1 = BufferBlob::create("StubRoutines (1)", code_size1);
     if (_code1 == NULL) {
       vm_exit_out_of_memory(code_size1, OOM_MALLOC_ERROR, "CodeCache: no room for StubRoutines (1)");
     }
@@ -276,7 +279,10 @@ void StubRoutines::initialize2() {
   if (_code2 == NULL) {
     ResourceMark rm;
     TraceTime timer("StubRoutines generation 2", TRACETIME_LOG(Info, startuptime));
-    _code2 = BufferBlob::create("StubRoutines (2)", code_size2);
+    if (MoveStubroutinesToNonProfileCodeHeap)
+      _code2 = BufferBlob::create("StubRoutines (2)", code_size2, CodeBlobType::MethodNonProfiled);
+    else
+      _code2 = BufferBlob::create("StubRoutines (2)", code_size2);
     if (_code2 == NULL) {
       vm_exit_out_of_memory(code_size2, OOM_MALLOC_ERROR, "CodeCache: no room for StubRoutines (2)");
     }

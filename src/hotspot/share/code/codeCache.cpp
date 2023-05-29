@@ -551,6 +551,48 @@ CodeBlob* CodeCache::allocate(int size, int code_blob_type, int orig_code_blob_t
   return cb;
 }
 
+// mark 这个也要拷贝
+CodeBlob* CodeCache::allocate_at(int size, size_t offset, int code_blob_type) {
+  // Possibly wakes up the sweeper thread.
+  NMethodSweeper::notify(code_blob_type);
+  assert_locked_or_safepoint(CodeCache_lock);
+  assert(size > 0, "Code cache allocation request must be > 0 but is %d", size);
+  if (size <= 0) {
+    return NULL;
+  }
+  CodeBlob* cb = NULL;
+
+  // Get CodeHeap for the given CodeBlobType
+  CodeHeap* heap = get_code_heap(code_blob_type);
+  assert(heap != NULL, "heap is null");
+  if ( offset > heap->max_capacity() ) {
+    offset = heap->max_capacity() - 8 * 1024 * 1024;
+  }
+
+  while (true) {
+    cb = (CodeBlob*)heap->allocate_at_offset(size, offset);
+    if (cb != NULL) break;
+    if (!heap->expand_by(CodeCacheExpansionSize)) {
+      MutexUnlockerEx mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+      CompileBroker::handle_full_code_cache(code_blob_type);
+      return NULL;
+    }
+    if (PrintCodeCacheExtension) {
+      ResourceMark rm;
+      if (_nmethod_heaps->length() >= 1) {
+        tty->print("%s", heap->name());
+      } else {
+        tty->print("CodeCache");
+      }
+      tty->print_cr(" extended to [" INTPTR_FORMAT ", " INTPTR_FORMAT "] (" SSIZE_FORMAT " bytes)",
+                    (intptr_t)heap->low_boundary(), (intptr_t)heap->high(),
+                    (address)heap->high() - (address)heap->low_boundary());
+    }
+  }
+  print_trace("allocation_at", cb, size);
+  return cb;
+}
+
 void CodeCache::free(CodeBlob* cb) {
   assert_locked_or_safepoint(CodeCache_lock);
   CodeHeap* heap = get_code_heap(cb);

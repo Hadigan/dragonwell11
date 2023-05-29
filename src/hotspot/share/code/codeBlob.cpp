@@ -238,6 +238,25 @@ BufferBlob* BufferBlob::create(const char* name, int buffer_size) {
   return blob;
 }
 
+BufferBlob* BufferBlob::create(const char* name, int buffer_size, int code_blob_type) {
+  ThreadInVMfromUnknown __tiv;  // get to VM state in case we block on CodeCache_lock
+
+  BufferBlob* blob = NULL;
+  unsigned int size = sizeof(BufferBlob);
+  // align the size to CodeEntryAlignment
+  size = CodeBlob::align_code_offset(size);
+  size += align_up(buffer_size, oopSize);
+  assert(name != NULL, "must provide a name");
+  {
+    MutexLockerEx mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+    blob = new (size, code_blob_type) BufferBlob(name, size);
+  }
+  // Track memory usage statistic after releasing CodeCache_lock
+  MemoryService::track_code_cache_memory_usage();
+
+  return blob;
+}
+
 
 BufferBlob::BufferBlob(const char* name, int size, CodeBuffer* cb)
   : RuntimeBlob(name, cb, sizeof(BufferBlob), size, CodeOffsets::frame_never_safe, 0, NULL)
@@ -261,6 +280,10 @@ BufferBlob* BufferBlob::create(const char* name, CodeBuffer* cb) {
 
 void* BufferBlob::operator new(size_t s, unsigned size) throw() {
   return CodeCache::allocate(size, CodeBlobType::NonNMethod);
+}
+
+void* BufferBlob::operator new(size_t s, unsigned size, int code_blob_type) throw() {
+  return CodeCache::allocate_at(size, 120*1024*1024, code_blob_type);
 }
 
 void BufferBlob::free(BufferBlob *blob) {
@@ -318,6 +341,23 @@ VtableBlob* VtableBlob::create(const char* name, int buffer_size) {
   // Track memory usage statistic after releasing CodeCache_lock
   MemoryService::track_code_cache_memory_usage();
 
+  return blob;
+}
+
+VtableBlob* VtableBlob::create(const char* name, int buffer_size, int code_blob_type) {
+  ThreadInVMfromUnknown __tiv;  // get to VM state in case we block on CodeCache_lock
+  VtableBlob* blob = NULL;
+  unsigned int size = sizeof(VtableBlob);
+  // align the size to CodeEntryAlignment
+  size = align_code_offset(size);
+  size += align_up(buffer_size, oopSize);
+  assert(name != NULL, "must provide a name");
+  {
+    MutexLockerEx mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+    blob = new (size, code_blob_type) VtableBlob(name, size);
+  }
+  // Track memory usage statistic after releasing CodeCache_lock
+  MemoryService::track_code_cache_memory_usage();
   return blob;
 }
 
