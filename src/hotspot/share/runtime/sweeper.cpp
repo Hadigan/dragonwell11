@@ -159,6 +159,9 @@ Tickspan NMethodSweeper::_total_time_sweeping;                 // Accumulated ti
 Tickspan NMethodSweeper::_total_time_this_sweep;               // Total time this sweep
 Tickspan NMethodSweeper::_peak_sweep_time;                     // Peak time for a full sweep
 Tickspan NMethodSweeper::_peak_sweep_fraction_time;            // Peak time sweeping one fraction
+long     NMethodSweeper::_time_counter_for_print         = 0;
+bool     NMethodSweeper::_print_done                     = false;
+bool     NMethodSweeper::_copy_done                     = false;
 
 class MarkActivationClosure: public CodeBlobClosure {
 public:
@@ -264,14 +267,33 @@ void NMethodSweeper::do_stack_scanning() {
 
 void NMethodSweeper::sweeper_loop() {
   bool timeout;
+  if (CodeblobFilePath != NULL) {
+    FILE* fp = fopen(CodeblobFilePath, "w");
+    if (!fp) {
+      vm_exit_during_initialization("Open error: CodeblobFilePath=", CodeblobFilePath);
+    } 
+    else {
+      fprintf(fp, "wait\n");
+      fflush(fp);
+      fclose(fp);
+    }
+  }
+
   while (true) {
     {
       ThreadBlockInVM tbivm(JavaThread::current());
       MutexLockerEx waiter(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-      const long wait_time = 60*60*24 * 1000;
+      const long wait_time = 60 * 1000;
       timeout = CodeCache_lock->wait(Mutex::_no_safepoint_check_flag, wait_time);
     }
-    if (!timeout) {
+    if (timeout) {
+      _time_counter_for_print += 60;
+      tty->print_cr("sweeper timeout:" INTX_FORMAT ,_time_counter_for_print);
+      if (PrintCodeblobTime > 0 && _time_counter_for_print >= PrintCodeblobTime) {
+        print_codeblobs();
+      }
+    }
+    else {
       possibly_sweep();
     }
   }
@@ -424,6 +446,61 @@ static void post_sweep_event(EventSweepCodeCache* event,
   event->set_flushedCount(flushed);
   event->set_zombifiedCount(zombified);
   event->commit();
+}
+
+void NMethodSweeper::print_codeblobs() {
+  // CompiledMethodIterator curr;
+  ResourceMark rm;
+  FILE* fp;
+  if (CodeblobFilePath != NULL) {
+    fp = fopen(CodeblobFilePath, "w");
+    if (!fp) {
+      vm_exit_during_initialization("Open error: CodeblobFilePath=", CodeblobFilePath);
+      return;
+    }
+    
+  }
+  else {
+    return;
+  }
+
+  CodeblobIterator curr;
+
+  {
+    MutexLockerEx mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+    curr.next();
+    while (!curr.end()) {
+      CodeBlob* cb = curr.method();
+      curr.next();
+      if (cb->is_nmethod()) {
+        // cb->as_compiled_method()->method()
+        nmethod* nm = cb->as_nmethod();
+        if (nm->is_in_use()) {
+          fprintf(fp,"Method Name:%s\n",nm->method()->name_and_sig_as_C_string());
+          // tty->print_cr("Method Name:%s",nm->method()->name_and_sig_as_C_string());
+        }
+        else {
+          fprintf(fp, "Method Name:NotInUsed\n");
+        }
+        fprintf(fp,"Address Range:[" INTPTR_FORMAT "," INTPTR_FORMAT "]\n", p2i(nm->header_begin()), p2i(nm->header_begin() + cb->size()));
+        fprintf(fp,"main code:[" INTPTR_FORMAT "," INTPTR_FORMAT "]\n", p2i(nm->code_begin()), p2i(nm->stub_begin()));
+        fprintf(fp,"stub code:[" INTPTR_FORMAT "," INTPTR_FORMAT "]\n", p2i(nm->stub_begin()), p2i(nm->stub_end()));
+        fprintf(fp,"CompLevel:%d\n", nm->comp_level());
+        fprintf(fp,"HotnessCounter:%d\n", nm->hotness_counter());
+      }
+      else {
+        fprintf(fp,"Method Name:%s\n",cb->name());
+        fprintf(fp,"Address Range:[" INTPTR_FORMAT "," INTPTR_FORMAT "]\n", p2i(cb->header_begin()), p2i(cb->header_begin() + cb->size()));
+        fprintf(fp,"main code:[" INTPTR_FORMAT "," INTPTR_FORMAT "]\n", p2i(cb->header_begin()), p2i(cb->header_begin() + cb->size()));
+        fprintf(fp,"stub code:[" INTPTR_FORMAT "," INTPTR_FORMAT "]\n", p2i(cb->header_begin()), p2i(cb->header_begin() + cb->size()));
+        fprintf(fp,"CompLevel:5\n");
+        fprintf(fp,"HotnessCounter:0\n");
+      }
+      handle_safepoint_request();
+    }
+  }
+  fflush(fp);
+  fclose(fp);
 }
 
 void NMethodSweeper::sweep_code_cache() {

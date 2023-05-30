@@ -61,7 +61,10 @@
                                                                             \
   diagnostic(bool, VerboseWisp, false,                                      \
           "Print verbose Wisp information")                                 \
-
+  experimental(intx, PrintCodeblobTime, 0,                                        \
+          "if sweeper timecount > PrintCodeblobTime, print all codeblob info")    \
+  experimental(ccstr, CodeblobFilePath, "./jvm.codecache",                        \
+          "File path which saves codeblob")                                       \
   //add new AJDK specific flags here
 
 

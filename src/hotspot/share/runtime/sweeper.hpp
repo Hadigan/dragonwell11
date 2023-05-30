@@ -78,6 +78,9 @@ class NMethodSweeper : public AllStatic {
                                                   //   1) alive       -> not_entrant
                                                   //   2) not_entrant -> zombie
   // Stat counters
+  static long      _time_counter_for_print;
+  static bool      _print_done;
+  static bool      _copy_done;
   static long      _total_nof_methods_reclaimed;    // Accumulated nof methods flushed
   static long      _total_nof_c2_methods_reclaimed; // Accumulated nof C2-compiled methods flushed
   static size_t    _total_flushed_size;             // Total size of flushed methods
@@ -124,6 +127,7 @@ class NMethodSweeper : public AllStatic {
   static void possibly_flush(nmethod* nm);
   static void print(outputStream* out);   // Printing/debugging
   static void print() { print(tty); }
+  static void print_codeblobs();
 };
 
 #endif // SHARE_VM_RUNTIME_SWEEPER_HPP
