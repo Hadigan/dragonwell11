@@ -856,6 +856,10 @@ public:
   static bool reachable_from_branch_at(address branch, address target) {
     return uabs(target - branch) < branch_range;
   }
+  
+  static bool reachable_from_branch_at_for_trampoline(address branch, address target) {
+    return uabs(target - branch) < NOT_DEBUG(MaxBLDistance) DEBUG_ONLY(2 * M);
+  }
 
   // Unconditional branch (immediate)
 #define INSN(NAME, opcode)                                              \

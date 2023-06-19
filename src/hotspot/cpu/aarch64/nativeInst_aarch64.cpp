@@ -184,7 +184,7 @@ void NativeCall::set_destination_mt_safe(address dest, bool assert_lock) {
   ResourceMark rm;
   int code_size = NativeInstruction::instruction_size;
   address addr_call = addr_at(0);
-  bool reachable = Assembler::reachable_from_branch_at(addr_call, dest);
+  bool reachable = Assembler::reachable_from_branch_at_for_trampoline(addr_call, dest);
   assert(NativeCall::is_call_at(addr_call), "unexpected code at call site");
 
   // Patch the constant in the call's trampoline stub.
