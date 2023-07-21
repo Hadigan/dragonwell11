@@ -173,6 +173,8 @@ protected:
 protected:
   CompiledMethod(Method* method, const char* name, CompilerType type, const CodeBlobLayout& layout, int frame_complete_offset, int frame_size, ImmutableOopMapSet* oop_maps, bool caller_must_gc_arguments);
   CompiledMethod(Method* method, const char* name, CompilerType type, int size, int header_size, CodeBuffer* cb, int frame_complete_offset, int frame_size, OopMapSet* oop_maps, bool caller_must_gc_arguments);
+  CompiledMethod(CompiledMethod* src);
+  CompiledMethod(CompiledMethod* src, bool is_native);
 
 public:
   virtual bool is_compiled() const                { return true; }

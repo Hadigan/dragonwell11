@@ -2330,14 +2330,17 @@ void CodeHeapState::print_names(outputStream* out, CodeHeap* heap) {
           }
 
           if (get_name) {
-            Symbol* methName  = method->name();
-            const char*   methNameS = (methName == NULL) ? NULL : methName->as_C_string();
-            methNameS = (methNameS == NULL) ? "<method name unavailable>" : methNameS;
-            Symbol* methSig   = method->signature();
-            const char*   methSigS  = (methSig  == NULL) ? NULL : methSig->as_C_string();
-            methSigS  = (methSigS  == NULL) ? "<method signature unavailable>" : methSigS;
-            ast->print("%s", methNameS);
-            ast->print("%s", methSigS);
+            // Symbol* methName  = method->name();
+            // const char*   methNameS = (methName == NULL) ? NULL : methName->as_C_string();
+            // methNameS = (methNameS == NULL) ? "<method name unavailable>" : methNameS;
+            // Symbol* methSig   = method->signature();
+            // const char*   methSigS  = (methSig  == NULL) ? NULL : methSig->as_C_string();
+            // methSigS  = (methSigS  == NULL) ? "<method signature unavailable>" : methSigS;
+            // ast->print("%s", methNameS);
+            // ast->print("%s", methSigS);
+            const char* fullname = method->name_and_sig_as_C_string();
+            fullname = (fullname == NULL) ? "<method fullname unavaliable>" : fullname;
+            ast->print("%s", fullname);
           } else {
             ast->print("%s", blob_name);
           }

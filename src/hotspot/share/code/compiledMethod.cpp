@@ -44,10 +44,34 @@ CompiledMethod::CompiledMethod(Method* method, const char* name, CompilerType ty
   init_defaults();
 }
 
+// for native nmethod
 CompiledMethod::CompiledMethod(Method* method, const char* name, CompilerType type, int size, int header_size, CodeBuffer* cb, int frame_complete_offset, int frame_size, OopMapSet* oop_maps, bool caller_must_gc_arguments)
   : CodeBlob(name, type, CodeBlobLayout((address) this, size, header_size, cb), cb, frame_complete_offset, frame_size, oop_maps, caller_must_gc_arguments),
   _method(method), _mark_for_deoptimization_status(not_marked) {
   ZGC_ONLY( _gc_data = NULL; )
+  init_defaults();
+}
+
+CompiledMethod::CompiledMethod(CompiledMethod* src)
+  : CodeBlob((CodeBlob*)src),
+  _method(src->_method),
+  // _mark_for_deoptimization_status(src->_mark_for_deoptimization_status),
+  _mark_for_deoptimization_status(not_marked) {
+  ZGC_ONLY( _gc_data = NULL; )
+  // TODO
+  // copy or init default???
+  init_defaults();
+}
+
+CompiledMethod::CompiledMethod(CompiledMethod* src, bool is_native)
+  : CodeBlob((CodeBlob*)src, is_native),
+  _method(src->_method),
+  // _mark_for_deoptimization_status(src->_mark_for_deoptimization_status),
+  _mark_for_deoptimization_status(not_marked) {
+  ZGC_ONLY( _gc_data = NULL; )
+  _lazy_critical_native = src->_lazy_critical_native;
+  // TODO
+  // copy or init default???
   init_defaults();
 }
 
@@ -219,7 +243,8 @@ void CompiledMethod::verify_oop_relocations() {
 
 ScopeDesc* CompiledMethod::scope_desc_at(address pc) {
   PcDesc* pd = pc_desc_at(pc);
-  guarantee(pd != NULL, "scope must be present");
+  guarantee(pd != NULL, "scope must be present, pc: %p, code_begin(): %p, scope_pc_offset: %p, scope_pc_end: %p",
+           pc, code_begin(), scopes_pcs_begin(), scopes_pcs_end());
   return new ScopeDesc(this, pd->scope_decode_offset(),
                        pd->obj_decode_offset(), pd->should_reexecute(), pd->rethrow_exception(),
                        pd->return_oop());

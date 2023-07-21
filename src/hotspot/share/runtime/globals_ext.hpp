@@ -61,6 +61,31 @@
                                                                             \
   diagnostic(bool, VerboseWisp, false,                                      \
           "Print verbose Wisp information")                                 \
+                                                                            \
+  experimental(ccstr, MethodOrderFilePath, NULL,                            \
+          "File path which contains Method order")                          \
+                                                                            \
+  experimental(uintx, HotNonProfiledCodeHeapSize, 0,                        \
+          "Size of code heap with hot non-profiled methods (in bytes)")     \
+                                                                            \
+  experimental(bool, PrintTopNDetails, false,                               \
+          "print code,metadatas,relocation of topn method")                 \
+  experimental(bool, PrintSrcMethodDetails, false,                          \
+          "print code,metadatas,relocation of src topn method")             \
+  experimental(bool, PrintNewMethodDetails, false,                          \
+          "print code,metadatas,relocation of new topn method")             \
+  experimental(bool, CopyNormalNmethod, true,                               \
+          "print code,metadatas,relocation of new topn method")             \
+  experimental(bool, MoveVtableToHotCodeHeap, false,                        \
+          "move vtable and itable to hot codeheap")                         \
+  experimental(bool, MoveVtableToNonProfileCodeHeap, false,                 \
+          "move vtable and itable to nonprofile codeheap")                  \
+  experimental(intx, CopyTime, 0,                                           \
+          "if sweeper timecount > CopyTime, copy topnmethod")               \
+  experimental(bool, JVMTIOutputCodeBlobSize, false,                        \
+          "output blob size instead of code size using GenerateEvent")      \
+  experimental(ccstr, ReorderType, NULL,                                    \
+          "JACO or DCM, default is JACO")                                   \
 
   //add new AJDK specific flags here
 

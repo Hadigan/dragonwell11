@@ -74,6 +74,7 @@ public class NMethod extends CompiledMethod {
   private static CIntegerField stackTraversalMarkField;
 
   private static CIntegerField compLevelField;
+  private static CIntegerField hotnessCounterField;
 
   static {
     VM.registerVMInitializedObserver(new Observer() {
@@ -107,6 +108,7 @@ public class NMethod extends CompiledMethod {
     lockCountField              = type.getJIntField("_lock_count");
     stackTraversalMarkField     = type.getCIntegerField("_stack_traversal_mark");
     compLevelField              = type.getCIntegerField("_comp_level");
+    hotnessCounterField         = type.getCIntegerField("_hotness_counter");
     pcDescSize = db.lookupType("PcDesc").getSize();
   }
 
@@ -485,6 +487,18 @@ public class NMethod extends CompiledMethod {
            method.getSignature().asString();
   }
 
+  public String getWhatQJCWant() {
+    Method method = getMethod();
+    String methodName = "Method Name:" + method.getMethodHolder().getName().asString().replace('/', '.') + "." + 
+           method.getName().asString() +
+           method.getSignature().asString() + "\n";
+    String addressRange = "Address Range:[" + headerBegin() + "," + headerBegin().addOffsetTo(getSize()) + "]\n";
+    String maincodeRange = "main code:[" + instsBegin() + "," + instsEnd() + "]\n";
+    String stubcodeRange = "stub code:[" + stubBegin() + "," + stubEnd() + "]\n";
+    String etc = "CompLevel:" + getCompLevel() + "\n" + "HotnessCounter:" + getHotnessCounter() + "\n";
+    return methodName + addressRange + maincodeRange + stubcodeRange + etc;
+  }
+
   public void dumpReplayData(PrintStream out) {
     HashMap h = new HashMap();
     for (int i = 1; i < getMetadataLength(); i++) {
@@ -536,4 +550,5 @@ public class NMethod extends CompiledMethod {
   private int getNulChkTableOffset()  { return (int) nulChkTableOffsetField .getValue(addr); }
   private int getNMethodEndOffset()   { return (int) nmethodEndOffsetField  .getValue(addr); }
   private int getCompLevel()          { return (int) compLevelField         .getValue(addr); }
+  private int getHotnessCounter()     { return (int) hotnessCounterField    .getValue(addr); }
 }

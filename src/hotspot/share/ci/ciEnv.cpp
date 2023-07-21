@@ -1065,7 +1065,7 @@ void ciEnv::register_method(ciMethod* target,
           if (TraceMethodReplacement && old != NULL) {
             ResourceMark rm;
             char *method_name = method->name_and_sig_as_C_string();
-            tty->print_cr("Replacing method %s", method_name);
+            tty->print_cr("[%7d]Replacing method %d -> %d, %s", (int) tty->time_stamp().milliseconds(),old->comp_level(), task()->comp_level(), method_name);
           }
           if (old != NULL) {
             old->make_not_used();
@@ -1075,7 +1075,7 @@ void ciEnv::register_method(ciMethod* target,
           ResourceMark rm;
           char *method_name = method->name_and_sig_as_C_string();
           ttyLocker ttyl;
-          tty->print_cr("Installing method (%d) %s ",
+          tty->print_cr("[%7d]Installing method (%d) %s ",(int) tty->time_stamp().milliseconds(),
                         task()->comp_level(),
                         method_name);
         }

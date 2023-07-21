@@ -124,6 +124,9 @@ class nmethod : public CompiledMethod {
   bool _unload_reported;
   bool _load_reported;
 
+  bool _is_topn_method;
+  bool _is_new_topn_method;
+  int _topn_id;
   // Protected by Patching_lock
   volatile signed char _state;               // {not_installed, in_use, not_entrant, zombie, unloaded}
 
@@ -215,9 +218,13 @@ class nmethod : public CompiledMethod {
           jweak speculation_log
 #endif
           );
+  nmethod(nmethod* src);
+  nmethod(nmethod* src, bool is_native_nmethod);
 
   // helper methods
+  void* operator new(size_t size, int nmethod_size) throw ();
   void* operator new(size_t size, int nmethod_size, int comp_level) throw();
+  void* operator new(size_t size, int nmethod_size, int comp_level, Method* method, bool is_osr_method) throw ();
 
   const char* reloc_string_for(u_char* begin, u_char* end);
   // Returns true if this thread changed the state of the nmethod or
@@ -259,6 +266,8 @@ class nmethod : public CompiledMethod {
                               jweak speculation_log = NULL
 #endif
   );
+  static nmethod* new_nmethod(nmethod* src);
+  static nmethod* new_native_nmethod(nmethod* src);
 
   static nmethod* new_native_nmethod(const methodHandle& method,
                                      int compile_id,
@@ -328,6 +337,12 @@ class nmethod : public CompiledMethod {
   bool  is_not_entrant() const                    { return _state == not_entrant; }
   bool  is_zombie() const                         { return _state == zombie; }
   bool  is_unloaded() const                       { return _state == unloaded; }
+  bool  is_topn_method() const                    { return _is_topn_method; }
+  void  set_topn_method(bool is_topn)             { _is_topn_method = is_topn;}
+  bool  is_new_topn_method() const                    { return _is_new_topn_method; }
+  void  set_new_topn_method(bool is_new_topn)             { _is_new_topn_method = is_new_topn;}
+  int   topn_id() const                           { return _topn_id;}
+  void set_topn_id(int id)                        { _topn_id = id;}
 
 #if INCLUDE_ZGC
   void clear_unloading_state();
@@ -346,7 +361,18 @@ class nmethod : public CompiledMethod {
   // if this thread changed the state of the nmethod or false if
   // another thread performed the transition.
   bool  make_not_entrant() {
-    assert(!method()->is_method_handle_intrinsic(), "Cannot make MH intrinsic not entrant");
+    // assert(!method()->is_method_handle_intrinsic(), "Cannot make MH intrinsic not entrant");
+    if (TraceMakeNotEntrant) {
+      char *method_name;
+      if (method()) {
+        method_name = method()->name_and_sig_as_C_string();
+      }
+      else {
+        method_name = (char*)"NULL";
+      }
+      tty->print_cr("[%7d]Make Not Entrant, compile_level:%d, methodname: %s", (int)tty->time_stamp().milliseconds(), comp_level(), method_name);
+    }
+    
     return make_not_entrant_or_zombie(not_entrant);
   }
   bool  make_not_used()    { return make_not_entrant(); }
@@ -398,6 +424,9 @@ private:
 public:
   void fix_oop_relocations(address begin, address end) { fix_oop_relocations(begin, end, false); }
   void fix_oop_relocations()                           { fix_oop_relocations(NULL, NULL, false); }
+  void fix_relocation_from_nmethod(nmethod* src_nm);
+  void clear_copied_nmethod_ic();
+  void verify_inline_cache();
 
   // Scavengable oop support
   bool  on_scavenge_root_list() const                  { return (_scavenge_root_state & 1) != 0; }
@@ -530,6 +559,7 @@ public:
  public:
   // copying of debugging information
   void copy_scopes_pcs(PcDesc* pcs, int count);
+  void copy_scopes_pcs(nmethod* src_nm);
   void copy_scopes_data(address buffer, int size);
 
   // Accessor/mutator for the original pc of a frame before a frame was deopted.
@@ -556,6 +586,7 @@ public:
   void print_nul_chk_table()                      PRODUCT_RETURN;
   void print_recorded_oops()                      PRODUCT_RETURN;
   void print_recorded_metadata()                  PRODUCT_RETURN;
+  void print_metadata();
 
   void maybe_print_nmethod(DirectiveSet* directive);
   void print_nmethod(bool print_code);

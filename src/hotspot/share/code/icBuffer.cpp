@@ -82,6 +82,7 @@ void ICStub::set_stub(CompiledIC *ic, void* cached_val, address dest_addr) {
 
 
 void ICStub::clear() {
+  // destination返回ICSTub最终跳去的地址
   if (CompiledIC::is_icholder_entry(destination())) {
     InlineCacheBuffer::queue_for_release((CompiledICHolder*)cached_value());
   }
@@ -141,7 +142,7 @@ ICStub* InlineCacheBuffer::new_ic_stub() {
   return NULL;
 }
 
-
+// TODO fixme
 void InlineCacheBuffer::update_inline_caches() {
   if (buffer()->number_of_stubs() > 1) {
     if (TraceICBuffer) {
@@ -195,6 +196,7 @@ void InlineCacheBuffer::create_transition_stub(CompiledIC *ic, void* cached_valu
 
 
 address InlineCacheBuffer::ic_destination_for(CompiledIC *ic) {
+  // ic->stub_address()返回的是ic call的目的地址，这个目的地址其实就是inlinecache 的stub的地址。
   ICStub* stub = ICStub_from_destination_address(ic->stub_address());
   return stub->destination();
 }
@@ -207,6 +209,7 @@ void* InlineCacheBuffer::cached_value_for(CompiledIC *ic) {
 
 
 // Free CompiledICHolder*s that are no longer in use
+// icholder是什么，要释放的时候只负责插入_pending_released这里面 ，然后GC负责调用这个，释放
 void InlineCacheBuffer::release_pending_icholders() {
   assert(SafepointSynchronize::is_at_safepoint(), "should only be called during a safepoint");
   CompiledICHolder* holder = _pending_released;

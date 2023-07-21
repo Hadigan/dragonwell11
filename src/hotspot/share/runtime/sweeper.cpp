@@ -22,6 +22,8 @@
  *
  */
 
+#include "code/codeBlob.hpp"
+#include "code/vtableStubs.hpp"
 #include "precompiled.hpp"
 #include "code/codeCache.hpp"
 #include "code/compiledIC.hpp"
@@ -45,7 +47,11 @@
 #include "runtime/vmOperations.hpp"
 #include "runtime/vmThread.hpp"
 #include "utilities/events.hpp"
+#include "utilities/globalDefinitions.hpp"
+#include "utilities/ostream.hpp"
 #include "utilities/xmlstream.hpp"
+#include "code/nmethod.hpp"
+#include "oops/method.inline.hpp"
 
 #ifdef ASSERT
 
@@ -159,6 +165,8 @@ Tickspan NMethodSweeper::_total_time_sweeping;                 // Accumulated ti
 Tickspan NMethodSweeper::_total_time_this_sweep;               // Total time this sweep
 Tickspan NMethodSweeper::_peak_sweep_time;                     // Peak time for a full sweep
 Tickspan NMethodSweeper::_peak_sweep_fraction_time;            // Peak time sweeping one fraction
+long     NMethodSweeper::_time_counter_for_copy         = 0;
+bool     NMethodSweeper::_copy_done                     = false;
 
 class MarkActivationClosure: public CodeBlobClosure {
 public:
@@ -205,6 +213,10 @@ void NMethodSweeper::mark_active_nmethods() {
   if (cl != NULL) {
     Threads::nmethods_do(cl);
   }
+}
+
+void NMethodSweeper::reorder_nmethods() {
+  copy_topn_methods();
 }
 
 CodeBlobClosure* NMethodSweeper::prepare_mark_active_nmethods() {
@@ -258,21 +270,56 @@ void NMethodSweeper::do_stack_scanning() {
   if (wait_for_stack_scanning()) {
     VM_MarkActiveNMethods op;
     VMThread::execute(&op);
+    tty->print_cr("do_stack_scanning");
     _should_sweep = true;
   }
 }
 
+/**
+  * This function triggers a VM operation that does */
+void NMethodSweeper::do_nmethod_copy() {
+  assert(!CodeCache_lock->owned_by_self(), "just checking");
+  VM_ReorderNMethods op;
+  VMThread::execute(&op);
+  tty->print_cr("do_reorder_nmethods");
+}
+
 void NMethodSweeper::sweeper_loop() {
   bool timeout;
+  _copy_done = false;
   while (true) {
     {
       ThreadBlockInVM tbivm(JavaThread::current());
       MutexLockerEx waiter(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-      const long wait_time = 60*60*24 * 1000;
+      // const long wait_time = 60*60*24 * 1000;
+      const long wait_time = 10 * 1000;
       timeout = CodeCache_lock->wait(Mutex::_no_safepoint_check_flag, wait_time);
     }
-    if (!timeout) {
-      possibly_sweep();
+    // tty->print_cr("sweeper timeout:%s", BOOL_TO_STR(timeout));
+    if (timeout) {
+      _time_counter_for_copy += 10;
+      tty->print_cr("sweeper timeout:" INTX_FORMAT ,_time_counter_for_copy);
+      if (CopyTime > 0 && _time_counter_for_copy > CopyTime && !_copy_done) {
+        _copy_done = true;
+        Ticks start_copy = Ticks::now();
+        if (ReorderType == NULL || strncmp(ReorderType, "JACO", 5) == 0 ) {
+          copy_topn_methods();
+          Ticks start_end = Ticks::now();
+          Tickspan reorder_time = start_end - start_copy;
+          tty->print_cr("JACO reorder consume %1.0lf ms", (double)reorder_time.value()/1000000);
+        }
+        else if (strncmp(ReorderType, "DCM", 4) == 0) {
+          do_nmethod_copy();
+          Ticks start_end = Ticks::now();
+          Tickspan reorder_time = start_end - start_copy;
+          tty->print_cr("DCM reorder consume %1.0lf ms", (double)reorder_time.value()/1000000);
+        }
+        // do stack scanning right now,then we can make zombie src_nm in this sweep process
+        // do_stack_scanning();
+        sweep_code_cache();
+      }
+    } else {
+        possibly_sweep();
     }
   }
 }
@@ -375,9 +422,13 @@ void NMethodSweeper::possibly_sweep() {
   // allocations go to the non-profiled heap and we must be make sure that there is
   // enough space.
   double free_percent = 1 / CodeCache::reverse_free_ratio(CodeBlobType::MethodNonProfiled) * 100;
+  // 10
   if (free_percent <= StartAggressiveSweepingAt) {
     do_stack_scanning();
   }
+
+  // tty->print_cr("sweeper _traversals  :" INTX_FORMAT, _traversals);
+  // tty->print_cr("sweeper _time_counter:" INTX_FORMAT, _time_counter);
 
   if (_should_sweep || forced) {
     init_sweeper_log();
@@ -425,6 +476,65 @@ static void post_sweep_event(EventSweepCodeCache* event,
   event->set_zombifiedCount(zombified);
   event->commit();
 }
+
+void NMethodSweeper::copy_normal_nmethods() {
+  int cp_cnt = 0;
+  CompiledMethodIterator curr;
+  {
+    MutexLockerEx mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+    curr.next();
+    while (!curr.end()) {
+      // Since we will give up the CodeCache_lock, always skip ahead
+      // to the next nmethod.  Other blobs can be deleted by other
+      // threads but nmethods are only reclaimed by the sweeper.
+      CompiledMethod* nm = curr.method();
+      curr.next();
+
+      // Now ready to process nmethod and give up CodeCache_lock
+      {
+        MutexUnlockerEx mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
+        if (CodeCache::top_n_method_name_table()->length() > 0 &&
+            _copy_done && CopyNormalNmethod) {
+
+          nmethod* src_nm = nm->as_nmethod_or_null();
+          if (src_nm == NULL) {
+            tty->print_cr("null src_nm");
+          }
+          else if (src_nm->is_osr_method()) {
+            // tty->print_cr("osr method: %s", src_nm->method()->name_and_sig_as_C_string());
+          }
+          else if (src_nm->is_native_method()) {
+            // tty->print_cr("native method: %s", src_nm->method()->name_and_sig_as_C_string());
+          }
+          if (src_nm != NULL           &&
+              !src_nm->is_osr_method() &&
+              (src_nm->comp_level() == 0 || src_nm->comp_level() == 1 || src_nm->comp_level() == 4) &&
+              src_nm->is_in_use()      &&
+              !src_nm->is_topn_method() &&
+              !src_nm->is_new_topn_method() &&
+              // !src_nm->is_native_method() &&
+              src_nm->is_in_use() &&
+              !src_nm->is_locked_by_vm() &&
+              !src_nm->is_marked_for_deoptimization()) {
+            nmethod* new_nm = copy_nm_to_topn_codeheap(src_nm);
+            cp_cnt++;
+            if (src_nm->is_native_method()) {
+              // tty->print_cr("copy normal native method: %s", new_nm->method()->name_and_sig_as_C_string());
+            }
+            else {
+              // tty->print_cr("copy normal compile-%d method: %s", src_nm->comp_level(), new_nm->method()->name_and_sig_as_C_string());
+            }
+
+          }
+        }
+      }
+      handle_safepoint_request();
+    }
+  }
+  assert(curr.end(), "must have scanned the whole cache");
+  tty->print_cr("copy normal nmethods: %d", cp_cnt);
+}
+
 
 void NMethodSweeper::sweep_code_cache() {
   ResourceMark rm;
@@ -614,6 +724,41 @@ NMethodSweeper::MethodStateChange NMethodSweeper::process_compiled_method(Compil
     return result;
   }
 
+  // if (CodeCache::top_n_method_name_table()->length() > 0 &&
+  //     _copy_done && CopyNormalNmethod) {
+
+  //   nmethod* src_nm = cm->as_nmethod_or_null();
+  //   if (src_nm == NULL) {
+  //     tty->print_cr("null src_nm");
+  //   }
+  //   else if (src_nm->is_osr_method()) {
+  //     // tty->print_cr("osr method: %s", src_nm->method()->name_and_sig_as_C_string());
+  //   }
+  //   else if (src_nm->is_native_method()) {
+  //     // tty->print_cr("native method: %s", src_nm->method()->name_and_sig_as_C_string());
+  //   }
+  //   if (src_nm != NULL           &&
+  //       !src_nm->is_osr_method() &&
+  //       (src_nm->comp_level() == 0 || src_nm->comp_level() == 1 || src_nm->comp_level() == 4) &&
+  //       src_nm->is_in_use()      &&
+  //       !src_nm->is_topn_method() &&
+  //       !src_nm->is_new_topn_method() &&
+  //       // !src_nm->is_native_method() &&
+  //       src_nm->is_in_use() &&
+  //       !src_nm->is_locked_by_vm() &&
+  //       !src_nm->is_marked_for_deoptimization()) {
+  //     nmethod* new_nm = copy_nm_to_topn_codeheap(src_nm);
+  //     if (src_nm->is_native_method()) {
+  //       // tty->print_cr("copy normal native method: %s", new_nm->method()->name_and_sig_as_C_string());
+  //     }
+  //     else {
+  //       // tty->print_cr("copy normal compile-%d method: %s", src_nm->comp_level(), new_nm->method()->name_and_sig_as_C_string());
+  //     }
+
+  //   }
+  // }
+
+
   if (cm->is_zombie()) {
     // All inline caches that referred to this nmethod were cleaned in the
     // previous sweeper cycle. Now flush the nmethod from the code cache.
@@ -685,6 +830,120 @@ NMethodSweeper::MethodStateChange NMethodSweeper::process_compiled_method(Compil
   return result;
 }
 
+nmethod* NMethodSweeper::copy_nm_to_topn_codeheap(nmethod* src_nm) {
+  assert(!src_nm->is_osr_method(), "src_nm can not be a osr method");
+  nmethod* new_nm = NULL;
+  methodHandle method(src_nm->method());
+  if (src_nm->is_native_method()) {
+
+    new_nm = nmethod::new_native_nmethod(src_nm);
+    if (new_nm != NULL) {
+      src_nm->make_not_entrant();
+      new_nm->set_lazy_critical_native(src_nm->is_lazy_critical_native());
+      src_nm->method()->set_code(method, new_nm);
+      new_nm->post_compiled_method_load_event();
+      new_nm->set_new_topn_method(true);
+    }
+    return new_nm;
+  }
+  else {
+    new_nm = nmethod::new_nmethod(src_nm);
+    if (new_nm != NULL) {
+      // TODO fixme
+      // 不确定会不会导致重新编译或者导致entry被定位到了解释执行。
+      // src_nm->mark_for_deoptimization(false);
+      src_nm->make_not_entrant();
+      new_nm->set_has_unsafe_access(src_nm->has_unsafe_access());
+      new_nm->set_has_wide_vectors(src_nm->has_wide_vectors());
+#if INCLUDE_RTM_OPT
+      new_nm->set_rtm_state(src_nm->rtm_state());
+#endif
+      // // Record successful registration.
+      // // (Put nm into the task handle *before* publishing to the Java heap.)
+      // if (task() != NULL) {
+      //   task()->set_code(nm);
+      // }
+
+      if (TieredCompilation) {
+        assert(src_nm->method() != NULL, "src_nm->method == NULL");
+        CompiledMethod* old = src_nm->method()->code();
+        if (old != NULL) {
+          old->make_not_used();
+        }
+        src_nm->method()->set_code(method, new_nm);
+      }
+      new_nm->make_in_use();
+      new_nm->post_compiled_method_load_event();
+      new_nm->set_new_topn_method(true);
+    }
+    return new_nm;
+  }
+}
+
+int NMethodSweeper::copy_topn_methods() {
+  // Fix me
+  ResourceMark rm;
+  address nm_address;
+  int copied_count = 0;
+  int copied_src_vtable = 0;
+  int copied_src_itable = 0;
+  int null_address_count = 0;
+  int null_srcnm_count = 0;
+
+  for (int i = 0; i < CodeCache::top_n_method_name_table()->length(); i++){
+    const char* src_cb_name = CodeCache::top_n_method_name_table()->at(i);
+    // vtablestub format: [vi]table#[0-9]+
+    const char* prefix_vtable = "vtable_stub#";
+    const char* prefix_itable = "itable_stub#";
+    if (strncmp(prefix_vtable, src_cb_name, strlen(prefix_vtable)) == 0) {
+      int vtable_index = atoi(src_cb_name + strlen(prefix_vtable));
+      VtableStubs::create_reorder_stub(true, vtable_index);
+      copied_src_vtable++;
+      ttyLocker ttyl;
+      tty->print_cr("copy new vtable_stub#%d", vtable_index);
+    } else if (strncmp(prefix_itable, src_cb_name, strlen(prefix_itable)) == 0) {
+      int itable_index = atoi(src_cb_name + strlen(prefix_itable));
+      VtableStubs::create_reorder_stub(false, itable_index);
+      copied_src_itable++;
+      ttyLocker ttyl;
+      tty->print_cr("copy new itable_stub#%d", itable_index);
+    } else {
+      nm_address = CodeCache::top_n_method_address_table()->at(i);
+      null_address_count += (nm_address == 0 ? 1:0);
+      if (nm_address != 0 && CodeCache::contains(nm_address)) {
+        nmethod* src_nm = (nmethod*)CodeCache::find_blob_unsafe(nm_address);
+        null_srcnm_count += (src_nm == NULL ? 1:0);
+        // assert(src_nm->is_topn_method(), "must be topn method");
+        if (src_nm != NULL              &&
+            src_nm->is_topn_method()    &&
+            src_nm->is_in_use()         &&
+            // src_nm->is_compiled_by_c2() &&
+            !src_nm->is_locked_by_vm()  &&
+            !src_nm->is_marked_for_deoptimization()) {
+          nmethod* new_nm = copy_nm_to_topn_codeheap(src_nm);
+          copied_count++;
+          // ttyLocker ttyl;
+          if (src_nm->is_native_method()) {
+            // tty->print_cr("copy top native method, method_index: " INT32_FORMAT, i);
+          }
+          else {
+            // tty->print_cr("copy top compiled method, method_index: " INT32_FORMAT, i);
+          }
+        }
+      }
+    }
+  }
+  copy_normal_nmethods();
+  {
+    ttyLocker ttyl;
+    tty->print_cr("copied topn count:" INT32_FORMAT, copied_count);
+    tty->print_cr("copied_src_vtable:" INT32_FORMAT, copied_src_vtable);
+    tty->print_cr("copied_src_itable:" INT32_FORMAT, copied_src_itable);
+    tty->print_cr("null_address_count:" INT32_FORMAT, null_address_count);
+    tty->print_cr("null_srcnm_count:" INT32_FORMAT, null_srcnm_count);
+  }
+  return 0;
+}
 
 void NMethodSweeper::possibly_flush(nmethod* nm) {
   if (UseCodeCacheFlushing) {

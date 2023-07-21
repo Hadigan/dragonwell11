@@ -1,0 +1,9 @@
+diff a/src/hotspot/share/logging/logTag.hpp b/src/hotspot/share/logging/logTag.hpp	(rejected hunks)
+@@ -175,6 +175,7 @@
+   LOG_TAG(workgang) \
+   LOG_TAG(quickstart) \
+   JWARMUP_ONLY(LOG_TAG(jwarmup)) \
++  LOG_TAG(topn) \
+   LOG_TAG_LIST_EXT
+ 
+ #define PREFIX_LOG_TAG(T) (LogTag::_##T)

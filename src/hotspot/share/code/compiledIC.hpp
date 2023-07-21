@@ -209,6 +209,7 @@ class CompiledIC: public ResourceObj {
   friend CompiledIC* CompiledIC_at(CompiledMethod* nm, address call_site);
   friend CompiledIC* CompiledIC_at(Relocation* call_site);
   friend CompiledIC* CompiledIC_at(RelocIterator* reloc_iter);
+  friend CompiledIC* CompiledIC_at_no_verify(RelocIterator* reloc_iter);
 
   static bool is_icholder_call_site(virtual_call_Relocation* call_site, const CompiledMethod* cm);
 
@@ -257,6 +258,7 @@ class CompiledIC: public ResourceObj {
   void set_to_clean(bool in_use = true);
   void set_to_monomorphic(CompiledICInfo& info);
   void clear_ic_stub();
+  void set_to_clean_for_copied();
 
   // Returns true if successful and false otherwise. The call can fail if memory
   // allocation in the code cache fails.
@@ -300,6 +302,15 @@ inline CompiledIC* CompiledIC_at(RelocIterator* reloc_iter) {
       reloc_iter->type() == relocInfo::opt_virtual_call_type, "wrong reloc. info");
   CompiledIC* c_ic = new CompiledIC(reloc_iter);
   c_ic->verify();
+  return c_ic;
+}
+
+// because we are in the copy process，copied nmethod is not in use，so all ic in copied nmethod can not pass the ic verify
+inline CompiledIC* CompiledIC_at_no_verify(RelocIterator* reloc_iter) {
+  assert(reloc_iter->type() == relocInfo::virtual_call_type ||
+      reloc_iter->type() == relocInfo::opt_virtual_call_type, "wrong reloc. info");
+  CompiledIC* c_ic = new CompiledIC(reloc_iter);
+  // c_ic->verify();
   return c_ic;
 }
 

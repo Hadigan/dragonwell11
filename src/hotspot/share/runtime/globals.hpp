@@ -1242,6 +1242,8 @@ define_pd_global(uint64_t,MaxRAM,                    1ULL*G);
                                                                             \
   develop(bool, TraceMethodReplacement, false,                              \
           "Print when methods are replaced do to recompilation")            \
+  develop(bool, TraceMakeNotEntrant, false,                                 \
+          "Print when methods are marked as made_not_entrant")              \
                                                                             \
   develop(bool, PrintMethodFlushing, false,                                 \
           "Print the nmethods being flushed")                               \

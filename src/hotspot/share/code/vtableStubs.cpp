@@ -22,6 +22,7 @@
  *
  */
 
+#include "code/codeBlob.hpp"
 #include "precompiled.hpp"
 #include "code/vtableStubs.hpp"
 #include "compiler/compileBroker.hpp"
@@ -38,43 +39,33 @@
 #include "runtime/mutexLocker.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "utilities/align.hpp"
+#include "utilities/globalDefinitions.hpp"
+#include "utilities/ostream.hpp"
+#include <cstddef>
 #ifdef COMPILER2
 #include "opto/matcher.hpp"
 #endif
 
 // -----------------------------------------------------------------------------------------
 // Implementation of VtableStub
-
-address VtableStub::_chunk             = NULL;
-address VtableStub::_chunk_end         = NULL;
+VtableBlob* VtableStub::_last_vb = NULL;
 VMReg   VtableStub::_receiver_location = VMRegImpl::Bad();
 
 
-void* VtableStub::operator new(size_t size, int code_size) throw() {
+void* VtableStub::operator new(size_t size, int code_size, int code_blob_type) throw() {
   assert(size == sizeof(VtableStub), "mismatched size");
   // compute real VtableStub size (rounded to nearest word)
   const int real_size = align_up(code_size + (int)sizeof(VtableStub), wordSize);
-  // malloc them in chunks to minimize header overhead
-  const int chunk_factor = 32;
-  if (_chunk == NULL || _chunk + real_size > _chunk_end) {
-    const int bytes = chunk_factor * real_size + pd_code_alignment();
+  const int bytes = real_size + pd_code_alignment();
 
-   // There is a dependency on the name of the blob in src/share/vm/prims/jvmtiCodeBlobEvents.cpp
-   // If changing the name, update the other file accordingly.
-    VtableBlob* blob = VtableBlob::create("vtable chunks", bytes);
-    if (blob == NULL) {
-      return NULL;
-    }
-    _chunk = blob->content_begin();
-    _chunk_end = _chunk + bytes;
-    Forte::register_stub("vtable stub", _chunk, _chunk_end);
-    align_chunk();
+  // There is a dependency on the name of the blob in src/share/vm/prims/jvmtiCodeBlobEvents.cpp
+  // If changing the name, update the other file accordingly.
+  _last_vb = VtableBlob::create("vtable chunks", bytes, code_blob_type);
+  if (_last_vb == NULL) {
+    return NULL;
   }
-  assert(_chunk + real_size <= _chunk_end, "bad allocation");
-  void* res = _chunk;
-  _chunk += real_size;
-  align_chunk();
- return res;
+  Forte::register_stub("vtable stub", _last_vb->content_begin(), _last_vb->content_begin()+bytes);
+  return _last_vb->content_begin();
 }
 
 
@@ -92,6 +83,7 @@ void VtableStub::print_on(outputStream* st) const {
 // by that hash value.
 
 VtableStub* VtableStubs::_table[VtableStubs::N];
+VtableStub* VtableStubs::_new_table[VtableStubs::N];
 int VtableStubs::_number_of_vtable_stubs = 0;
 int VtableStubs::_vtab_stub_size = 0;
 int VtableStubs::_itab_stub_size = 0;
@@ -129,6 +121,7 @@ void VtableStubs::initialize() {
     assert(is_power_of_2(N), "N must be a power of 2");
     for (int i = 0; i < N; i++) {
       _table[i] = NULL;
+      _new_table[i] = NULL;
     }
   }
 }
@@ -183,11 +176,8 @@ void VtableStubs::bookkeeping(MacroAssembler* masm, outputStream* out, VtableStu
   const int   stub_length = code_size_limit(is_vtable_stub);
 
   if (log_is_enabled(Trace, vtablestubs)) {
-    log_trace(vtablestubs)("%s #%d at " PTR_FORMAT ": size: %d, estimate: %d, slop area: %d",
-                           name, index, p2i(s->code_begin()),
-                           (int)(masm->pc() - s->code_begin()),
-                           stub_length,
-                           (int)(s->code_end() - masm->pc()));
+    log_trace(vtablestubs)("%s %d " PTR_FORMAT " " PTR_FORMAT,
+                            name, index, p2i(s), p2i(s->code_end()));
   }
   guarantee(masm->pc() <= s->code_end(), "%s #%d: overflowed buffer, estimated len: %d, actual len: %d, overrun: %d",
                                          name, index, stub_length,
@@ -209,11 +199,19 @@ address VtableStubs::find_stub(bool is_vtable_stub, int vtable_index) {
   assert(vtable_index >= 0, "must be positive");
 
   VtableStub* s = lookup(is_vtable_stub, vtable_index);
+  int code_blob_type = CodeBlobType::NonNMethod;
+  if (MoveVtableToHotCodeHeap) {
+    code_blob_type = CodeBlobType::HotMethodNonProfiled;
+  }
+  else if (MoveVtableToNonProfileCodeHeap) {
+    code_blob_type = CodeBlobType::MethodNonProfiled;
+  }
+  
   if (s == NULL) {
     if (is_vtable_stub) {
-      s = create_vtable_stub(vtable_index);
+      s = create_vtable_stub(vtable_index, code_blob_type);
     } else {
-      s = create_itable_stub(vtable_index);
+      s = create_itable_stub(vtable_index, code_blob_type);
     }
 
     // Creation of vtable or itable can fail if there is not enough free space in the code cache.
@@ -231,7 +229,9 @@ address VtableStubs::find_stub(bool is_vtable_stub, int vtable_index) {
     // JvmtiDynamicCodeEventCollector and posted when this thread has released
     // all locks.
     if (JvmtiExport::should_post_dynamic_code_generated()) {
-      JvmtiExport::post_dynamic_code_generated_while_holding_locks(is_vtable_stub? "vtable stub": "itable stub",
+      char name[64];
+      sprintf(name, is_vtable_stub? "vtable_stub#%d": "itable_stub#%d", vtable_index);
+      JvmtiExport::post_dynamic_code_generated_while_holding_locks(name,
                                                                    s->code_begin(), s->code_end());
     }
   }
@@ -249,7 +249,11 @@ inline uint VtableStubs::hash(bool is_vtable_stub, int vtable_index){
 VtableStub* VtableStubs::lookup(bool is_vtable_stub, int vtable_index) {
   MutexLocker ml(VtableStubs_lock);
   unsigned hash = VtableStubs::hash(is_vtable_stub, vtable_index);
-  VtableStub* s = _table[hash];
+
+  VtableStub* s = _new_table[hash];
+  while( s && !s->matches(is_vtable_stub, vtable_index)) s = s->next();
+  if (s != NULL) return s;
+  s = _table[hash];
   while( s && !s->matches(is_vtable_stub, vtable_index)) s = s->next();
   return s;
 }
@@ -265,11 +269,23 @@ void VtableStubs::enter(bool is_vtable_stub, int vtable_index, VtableStub* s) {
   _number_of_vtable_stubs++;
 }
 
+void VtableStubs::enter_new_table(bool is_vtable_stub, int vtable_index, VtableStub* s) {
+  MutexLocker ml(VtableStubs_lock);
+  assert(s->matches(is_vtable_stub, vtable_index), "bad vtable stub");
+  unsigned int h = VtableStubs::hash(is_vtable_stub, vtable_index);
+  // enter s at the beginning of the corresponding list
+  s->set_next(_new_table[h]);
+  _new_table[h] = s;
+  _number_of_vtable_stubs++;
+}
+
 VtableStub* VtableStubs::entry_point(address pc) {
   MutexLocker ml(VtableStubs_lock);
   VtableStub* stub = (VtableStub*)(pc - VtableStub::entry_offset());
   uint hash = VtableStubs::hash(stub->is_vtable_stub(), stub->index());
   VtableStub* s;
+  for (s = _new_table[hash]; s != NULL && s != stub; s = s->next()) {}
+  if (s != NULL) return (s == stub) ? s : NULL;
   for (s = _table[hash]; s != NULL && s != stub; s = s->next()) {}
   return (s == stub) ? s : NULL;
 }
@@ -286,10 +302,16 @@ VtableStub* VtableStubs::stub_containing(address pc) {
   //       happens with an atomic store into it (we don't care about
   //       consistency with the _number_of_vtable_stubs counter).
   for (int i = 0; i < N; i++) {
+    for (VtableStub* s = _new_table[i]; s != NULL; s = s->next()) {
+      if (s->contains(pc)) return s;
+    }
+  }
+  for (int i = 0; i < N; i++) {
     for (VtableStub* s = _table[i]; s != NULL; s = s->next()) {
       if (s->contains(pc)) return s;
     }
   }
+
   return NULL;
 }
 
@@ -298,11 +320,46 @@ void vtableStubs_init() {
 }
 
 void VtableStubs::vtable_stub_do(void f(VtableStub*)) {
-    for (int i = 0; i < N; i++) {
-        for (VtableStub* s = _table[i]; s != NULL; s = s->next()) {
-            f(s);
-        }
-    }
+  for (int i = 0; i < N; i++) {
+      for (VtableStub* s = _new_table[i]; s != NULL; s = s->next()) {
+          f(s);
+      }
+  }
+  for (int i = 0; i < N; i++) {
+      for (VtableStub* s = _table[i]; s != NULL; s = s->next()) {
+          f(s);
+      }
+  }
+}
+
+void VtableStubs::create_reorder_stub(bool is_vtable_stub, int vtable_index) {
+  assert(vtable_index >= 0, "must be positive");
+  // 不能检查，否则会查到旧表中的项，这样就不会创建新的了
+  // VtableStub* s = lookup(is_vtable_stub, vtable_index);
+  VtableStub* s;
+  if (is_vtable_stub) {
+    s = create_vtable_stub(vtable_index, CodeBlobType::HotMethodNonProfiled);
+  } else {
+    s = create_itable_stub(vtable_index, CodeBlobType::HotMethodNonProfiled);
+  }
+
+  // Creation of vtable or itable can fail if there is not enough free space in the code cache.
+  if (s == NULL) {
+    ttyLocker ttyl;
+    tty->print_cr("FATAL: create_reorder_stub failed!!!");
+    return;
+  }
+
+  enter_new_table(is_vtable_stub, vtable_index, s);
+  // Notify JVMTI about this stub. The event will be recorded by the enclosing
+  // JvmtiDynamicCodeEventCollector and posted when this thread has released
+  // all locks.
+  if (JvmtiExport::should_post_dynamic_code_generated()) {
+    char name[64];
+    sprintf(name, is_vtable_stub? "vtable-stub#%d": "itable-stub#%d", vtable_index);
+    JvmtiExport::post_dynamic_code_generated_while_holding_locks(name,
+                                                                  s->code_begin(), s->code_end());
+  }
 }
 
 

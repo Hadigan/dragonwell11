@@ -1,0 +1,26 @@
+diff a/src/hotspot/share/runtime/sweeper.cpp b/src/hotspot/share/runtime/sweeper.cpp	(rejected hunks)
+@@ -837,19 +922,20 @@ int NMethodSweeper::copy_topn_methods() {
+             // src_nm->is_compiled_by_c2() &&
+             !src_nm->is_locked_by_vm()  &&
+             !src_nm->is_marked_for_deoptimization()) {
++          nmethod* new_nm = copy_nm_to_topn_codeheap(src_nm);
++          copied_count++;
+           ttyLocker ttyl;
+           if (src_nm->is_native_method()) {
+-            tty->print_cr("copy top native method, method_index: " INT32_FORMAT, i);
++            // tty->print_cr("copy top native method, method_index: " INT32_FORMAT, i);
+           }
+           else {
+-            tty->print_cr("copy top compiled method, method_index: " INT32_FORMAT, i);
++            // tty->print_cr("copy top compiled method, method_index: " INT32_FORMAT, i);
+           }
+-          nmethod* new_nm = copy_nm_to_topn_codeheap(src_nm);
+-          copied_count++;
+         }
+       }
+     }
+   }
++  copy_normal_nmethods();
+   {
+     ttyLocker ttyl;
+     tty->print_cr("copied topn count:" INT32_FORMAT, copied_count);

@@ -37,12 +37,13 @@
 // Used in the CodeCache to assign CodeBlobs to different CodeHeaps
 struct CodeBlobType {
   enum {
-    MethodNonProfiled   = 0,    // Execution level 1 and 4 (non-profiled) nmethods (including native nmethods)
-    MethodProfiled      = 1,    // Execution level 2 and 3 (profiled) nmethods
-    NonNMethod          = 2,    // Non-nmethods like Buffers, Adapters and Runtime Stubs
-    All                 = 3,    // All types (No code cache segmentation)
-    AOT                 = 4,    // AOT methods
-    NumTypes            = 5     // Number of CodeBlobTypes
+    HotMethodNonProfiled  = 0,
+    MethodNonProfiled     = 1,    // Execution level 1 and 4 (non-profiled) nmethods (including native nmethods)
+    MethodProfiled        = 2,    // Execution level 2 and 3 (profiled) nmethods
+    NonNMethod            = 3,    // Non-nmethods like Buffers, Adapters and Runtime Stubs
+    All                   = 4,    // All types (No code cache segmentation)
+    AOT                   = 5,    // AOT methods
+    NumTypes              = 6     // Number of CodeBlobTypes
   };
 };
 
@@ -116,6 +117,8 @@ protected:
 
   CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& layout, int frame_complete_offset, int frame_size, ImmutableOopMapSet* oop_maps, bool caller_must_gc_arguments);
   CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& layout, CodeBuffer* cb, int frame_complete_offset, int frame_size, OopMapSet* oop_maps, bool caller_must_gc_arguments);
+  CodeBlob(CodeBlob* src);
+  CodeBlob(CodeBlob* src, bool is_native);
 public:
   // Returns the space needed for CodeBlob
   static unsigned int allocation_size(CodeBuffer* cb, int header_size);
@@ -400,6 +403,7 @@ class BufferBlob: public RuntimeBlob {
   // delete rather than an ordinary sized delete; see C++14 3.7.4.2/p2.
   void operator delete(void* p);
   void* operator new(size_t s, unsigned size) throw();
+  void* operator new(size_t s, unsigned size, int code_blob_type) throw();
 
  public:
   // Creation
@@ -443,7 +447,7 @@ private:
 
 public:
   // Creation
-  static VtableBlob* create(const char* name, int buffer_size);
+  static VtableBlob* create(const char* name, int buffer_size, int code_blob_type=CodeBlobType::NonNMethod);
 
   // Typing
   virtual bool is_vtable_blob() const { return true; }

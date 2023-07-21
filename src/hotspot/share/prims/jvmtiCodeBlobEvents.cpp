@@ -141,15 +141,28 @@ void CodeBlobCollector::do_blob(CodeBlob* cb) {
   }
 
   // record the CodeBlob details as a JvmtiCodeBlobDesc
-  JvmtiCodeBlobDesc* scb = new JvmtiCodeBlobDesc(cb->name(), cb->code_begin(), cb->code_end());
+  JvmtiCodeBlobDesc* scb;
+  if (JVMTIOutputCodeBlobSize) {
+    scb = new JvmtiCodeBlobDesc(cb->name(), cb->header_begin(), cb->header_begin() + cb->size());
+  } else {
+    scb = new JvmtiCodeBlobDesc(cb->name(), cb->code_begin(), cb->code_end());
+  }
   _global_code_blobs->append(scb);
 }
 
 // called for each VtableStub in VtableStubs
 
 void CodeBlobCollector::do_vtable_stub(VtableStub* vs) {
-    JvmtiCodeBlobDesc* scb = new JvmtiCodeBlobDesc(vs->is_vtable_stub() ? "vtable stub" : "itable stub",
-                                                   vs->code_begin(), vs->code_end());
+    char name[128];
+    sprintf(name, vs->is_vtable_stub()? "vtable_stub#%d": "itable_stub#%d", vs->index());
+
+    JvmtiCodeBlobDesc* scb;
+    if (JVMTIOutputCodeBlobSize) {
+      VtableBlob* vb = vs->vtable_blob();
+      scb = new JvmtiCodeBlobDesc(name, vb->header_begin(), vb->header_begin() + vb->size());
+    } else {
+      scb = new JvmtiCodeBlobDesc(name, vs->code_begin(), vs->code_end());
+    }
     _global_code_blobs->append(scb);
 }
 

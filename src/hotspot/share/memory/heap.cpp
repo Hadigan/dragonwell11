@@ -95,8 +95,9 @@ void CodeHeap::mark_segmap_as_free(size_t beg, size_t end) {
 // This method takes segment map indices as range boundaries.
 // The range of segments to be marked is given by [beg..end).
 void CodeHeap::mark_segmap_as_used(size_t beg, size_t end, bool is_FreeBlock_join) {
-  assert(             beg <  _number_of_committed_segments, "interval begin out of bounds");
-  assert(beg < end && end <= _number_of_committed_segments, "interval end   out of bounds");
+  assert(beg < end, "interval begin(%d) >= end(%d)", (int)beg, (int)end);
+  assert(             beg <  _number_of_committed_segments, "interval begin(%d) out of bounds(%d)", (int)beg, (int)_number_of_committed_segments);
+  assert(beg < end && end <= _number_of_committed_segments, "interval end(%d)   out of bounds(%d)", (int)end, (int)_number_of_committed_segments);
   // Don't do unpredictable things in PRODUCT build
   if (beg < end) {
     // setup _segmap pointers for faster indexing
@@ -362,6 +363,10 @@ void CodeHeap::deallocate_tail(void* p, size_t used_size) {
   guarantee(used_number_of_segments <= actual_number_of_segments, "Must be!");
 
   HeapBlock* f = split_block(b, used_number_of_segments);
+  _blob_count--;
+  assert(_blob_count >= 0, "sanity");
+  // update free space
+  _freelist_segments += f->length();
   add_to_freelist(f);
   NOT_PRODUCT(verify());
 }
@@ -377,6 +382,10 @@ void CodeHeap::deallocate(void* p) {
             "The block to be deallocated " INTPTR_FORMAT " is not within the heap "
             "starting with "  INTPTR_FORMAT " and ending with " INTPTR_FORMAT,
             p2i(b), p2i(_memory.low_boundary()), p2i(_memory.high()));
+  _blob_count--;
+  assert(_blob_count >= 0, "sanity");
+  // update free space
+  _freelist_segments += b->length();
   add_to_freelist(b);
   NOT_PRODUCT(verify());
 }
@@ -461,7 +470,8 @@ void* CodeHeap::find_block_for(void* p) const {
 
   address seg_map = (address)_segmap.low();
   size_t  seg_idx = segment_for(p);
-
+  assert(seg_idx < (size_t)((address)_segmap.high() - (address)_segmap.low()),
+         "index out of range: %p not in [0,%d)", address_for(seg_idx), (int)((address)_segmap.high() - (address)_segmap.low()));
   // This may happen in special cases. Just ignore.
   // Example: PPC ICache stub generation.
   if (is_segment_unused(seg_map[seg_idx])) {
@@ -615,17 +625,14 @@ bool CodeHeap::merge_right(FreeBlock* a) {
 
 
 void CodeHeap::add_to_freelist(HeapBlock* a) {
+  // log_trace(codecache)("add_to_freelist: [%d, %d), freelist_length: %d", (int)segment_for(a), (int)(segment_for(a)+a->length()), (int)_freelist_length);
   FreeBlock* b = (FreeBlock*)a;
   size_t  bseg = segment_for(b);
   _freelist_length++;
 
-  _blob_count--;
-  assert(_blob_count >= 0, "sanity");
-
   assert(b != _freelist, "cannot be removed twice");
 
-  // Mark as free and update free space count
-  _freelist_segments += b->length();
+  // Mark as free
   b->set_free();
   invalidate(bseg, bseg + b->length(), sizeof(FreeBlock));
 

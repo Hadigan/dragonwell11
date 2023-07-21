@@ -56,10 +56,12 @@ void* CompiledIC::cached_value() const {
   assert (!is_optimized(), "an optimized virtual call does not have a cached metadata");
 
   if (!is_in_transition_state()) {
+    // data就是cached value指向的地址的值，也就是指向icholder的地址，这个地址应该是在c heap上分配的。
     void* data = get_data();
     // If we let the metadata value here be initialized to zero...
     assert(data != NULL || Universe::non_oop_word() == NULL,
            "no raw nulls in CompiledIC metadatas, because of patching races");
+    // non_oop_word就是0xffffffffffff
     return (data == (void*)Universe::non_oop_word()) ? NULL : data;
   } else {
     return InlineCacheBuffer::cached_value_for((CompiledIC *)this);
@@ -132,13 +134,19 @@ void CompiledIC::set_ic_destination(ICStub* stub) {
 address CompiledIC::ic_destination() const {
  assert (CompiledIC_lock->is_locked() || SafepointSynchronize::is_at_safepoint(), "");
  if (!is_in_transition_state()) {
+  // destination返回的是，如果跳转的目的地是同一个nmethod内部的stub，那么返回的就是stub解析出来的要跳转去的地址
+  // 如果不是stub，则返回bl 直接跳转到的地址。
+  // 如果inlinecache buffer的stub中没有包含这个地址，那就不是transition state
+  // 那就是直接访问这个地址
    return _call->destination();
  } else {
+  // 如果inline cache buffer中包含了，那就要通过inlinecachebuffer来解析真正要去的地址。
    return InlineCacheBuffer::ic_destination_for((CompiledIC *)this);
  }
 }
 
-
+// 如果InlineCachebuffer包含这个要跳转去的目的地址
+// 那就是in transition state
 bool CompiledIC::is_in_transition_state() const {
   assert (CompiledIC_lock->is_locked() || SafepointSynchronize::is_at_safepoint(), "");
   return InlineCacheBuffer::contains(_call->destination());;
@@ -193,6 +201,7 @@ CompiledIC::CompiledIC(CompiledMethod* cm, NativeCall* call)
   assert(cm->contains(ic_call), "must be in compiled method");
 
   // Search for the ic_call at the given address.
+  // 意思是找到包含ic call的指令的relocation 信息
   RelocIterator iter(cm, ic_call, ic_call+1);
   bool ret = iter.next();
   assert(ret == true, "relocInfo must exist at this address");
@@ -268,6 +277,7 @@ bool CompiledIC::set_to_megamorphic(CallInfo* call_info, Bytecodes::Code bytecod
 
 
 // true if destination is megamorphic stub
+// 是不是跳到了vtable的stub中。
 bool CompiledIC::is_megamorphic() const {
   assert(CompiledIC_lock->is_locked() || SafepointSynchronize::is_at_safepoint(), "");
   assert(!is_optimized(), "an optimized call cannot be megamorphic");
@@ -283,6 +293,7 @@ bool CompiledIC::is_call_to_compiled() const {
   // method is guaranteed to still exist, since we only remove methods after all inline caches
   // has been cleaned up
   CodeBlob* cb = CodeCache::find_blob_unsafe(ic_destination());
+  // 指向resolve virtual call stub的不是compiled，所以这个不应该是false吗，assert不是应该通过的吗？
   bool is_monomorphic = (cb != NULL && cb->is_compiled());
   // Check that the cached_value is a klass for non-optimized monomorphic calls
   // This assertion is invalid for compiler1: a call that does not look optimized (no static stub) can be used
@@ -292,11 +303,20 @@ bool CompiledIC::is_call_to_compiled() const {
 #ifdef ASSERT
   CodeBlob* caller = CodeCache::find_blob_unsafe(instruction_address());
   bool is_c1_or_jvmci_method = caller->is_compiled_by_c1() || caller->is_compiled_by_jvmci();
+  // TODO fixme
+  if (!(is_c1_or_jvmci_method ||
+         !is_monomorphic ||
+         is_optimized() ||
+         !caller->is_alive() ||
+         (cached_metadata() != NULL && cached_metadata()->is_klass()))) {
+          tty->print_cr("inst address:" INTPTR_FORMAT , p2i(instruction_address()));
+          tty->print_cr("cached metadata is not_null ? %s", BOOL_TO_STR(cached_metadata() != NULL));
+         }
   assert( is_c1_or_jvmci_method ||
          !is_monomorphic ||
          is_optimized() ||
          !caller->is_alive() ||
-         (cached_metadata() != NULL && cached_metadata()->is_klass()), "sanity check");
+         (cached_metadata() != NULL && cached_metadata()->is_klass()), "sanity check"); 
 #endif // ASSERT
   return is_monomorphic;
 }
@@ -327,6 +347,21 @@ bool CompiledIC::is_call_to_interpreted() const {
   return is_call_to_interpreted;
 }
 
+void CompiledIC::set_to_clean_for_copied() {
+  assert(SafepointSynchronize::is_at_safepoint() || CompiledIC_lock->is_locked() , "MT-unsafe call");
+
+  assert(!is_optimized(), "can not be optimized virtual call");
+
+  // set destination to resolve virtual call stub
+  address entry = _call->get_resolve_call_stub(is_optimized());
+  _call->set_destination_mt_safe(entry);
+
+  // set *codecache_value to 0xffffffffffff
+  void* cache = (void*)Universe::non_oop_word();
+  set_data((intptr_t)cache);
+
+}
+
 void CompiledIC::set_to_clean(bool in_use) {
   assert(SafepointSynchronize::is_at_safepoint() || CompiledIC_lock->is_locked() , "MT-unsafe call");
   if (TraceInlineCacheClearing || TraceICs) {
@@ -334,10 +369,13 @@ void CompiledIC::set_to_clean(bool in_use) {
     print();
   }
 
+  // 获取解析虚函数的地址的stub的地址
   address entry = _call->get_resolve_call_stub(is_optimized());
 
   // A zombie transition will always be safe, since the metadata has already been set to NULL, so
   // we only need to patch the destination
+  // 如果是在in use的时候去清楚，那么要么是optimized，要么是在安全点
+  // 安全点只能是VM线程才能进入
   bool safe_transition = _call->is_safe_for_patching() || !in_use || is_optimized() || SafepointSynchronize::is_at_safepoint();
 
   if (safe_transition) {
@@ -360,11 +398,14 @@ void CompiledIC::set_to_clean(bool in_use) {
   // cleaning it immediately is harmless.
   // assert(is_clean(), "sanity check");
 }
-
+// // is clean 代表虚函数还没有解析过。
 bool CompiledIC::is_clean() const {
   assert (CompiledIC_lock->is_locked() || SafepointSynchronize::is_at_safepoint(), "");
   bool is_clean = false;
   address dest = ic_destination();
+  // get_resolve_call_stub返回的是一个 全局的解析虚函数调用的函数的地址。
+  // 解析虚函数调用的stub还分 virtual call和opt virtual call,这两个解析的函数是不一样的
+  // 如果call的目的地址等于解析虚函数的地址，那就代表还没有解析成功过，那就是clean的
   is_clean = dest == _call->get_resolve_call_stub(is_optimized());
   assert(!is_clean || is_optimized() || cached_value() == NULL, "sanity check");
   return is_clean;

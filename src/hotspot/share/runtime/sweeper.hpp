@@ -78,6 +78,8 @@ class NMethodSweeper : public AllStatic {
                                                   //   1) alive       -> not_entrant
                                                   //   2) not_entrant -> zombie
   // Stat counters
+  static long      _time_counter_for_copy;
+  static bool      _copy_done;
   static long      _total_nof_methods_reclaimed;    // Accumulated nof methods flushed
   static long      _total_nof_c2_methods_reclaimed; // Accumulated nof C2-compiled methods flushed
   static size_t    _total_flushed_size;             // Total size of flushed methods
@@ -95,6 +97,7 @@ class NMethodSweeper : public AllStatic {
   static void sweep_code_cache();
   static void handle_safepoint_request();
   static void do_stack_scanning();
+  static void do_nmethod_copy();
   static void possibly_sweep();
  public:
   static long traversal_count()              { return _traversals; }
@@ -112,7 +115,8 @@ class NMethodSweeper : public AllStatic {
   static void report_events();
 #endif
 
-  static void mark_active_nmethods();      // Invoked at the end of each safepoint
+  static void mark_active_nmethods();      // Invoked at the end of each safepoint ？？ each safepoint??
+  static void reorder_nmethods();          // 
   static CodeBlobClosure* prepare_mark_active_nmethods();
   static void sweeper_loop();
   static void notify(int code_blob_type);  // Possibly start the sweeper thread.
@@ -124,6 +128,9 @@ class NMethodSweeper : public AllStatic {
   static void possibly_flush(nmethod* nm);
   static void print(outputStream* out);   // Printing/debugging
   static void print() { print(tty); }
+  static nmethod* copy_nm_to_topn_codeheap(nmethod* nm);
+  static int copy_topn_methods();
+  static void copy_normal_nmethods();
 };
 
 #endif // SHARE_VM_RUNTIME_SWEEPER_HPP

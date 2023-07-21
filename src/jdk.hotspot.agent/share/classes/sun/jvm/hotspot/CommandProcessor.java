@@ -1537,16 +1537,22 @@ public class CommandProcessor {
                     usage();
                 } else {
                     final PrintStream fout = out;
-                    final HTMLGenerator gen = new HTMLGenerator(false);
+                    // final HTMLGenerator gen = new HTMLGenerator(false);
                     CodeCacheVisitor v = new CodeCacheVisitor() {
                             public void prologue(Address start, Address end) {
                             }
                             public void visit(CodeBlob blob) {
-                                fout.println(gen.genHTML(blob.contentBegin()));
+                                // fout.println(gen.genHTML(blob.contentBegin()));
+                                if (blob instanceof NMethod) {
+                                    fout.println(NMethodToString((NMethod)blob));
+                                }
                             }
                             public void epilogue() {
                             }
-
+                            private String NMethodToString(NMethod nmethod) {
+                                // print address range
+                                return nmethod.getWhatQJCWant();
+                            }
 
                         };
                     VM.getVM().getCodeCache().iterate(v);

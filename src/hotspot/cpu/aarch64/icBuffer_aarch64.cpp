@@ -67,7 +67,9 @@ address InlineCacheBuffer::ic_buffer_entry_point(address code_begin) {
   return jump->jump_destination();
 }
 
-
+// ic_stub_code_size（），如果有far branch的话，就是6*4字节，否则就是4*4字节
+// far branch，当release版本下reservered codecache > 128M 或者debug版本下 > 2M。就是far branch
+// 因为codecache更大了，有可能跳到很远的地方，也就是便宜变大了，因此需要更多的字节来存储偏移数据？？？
 void* InlineCacheBuffer::ic_buffer_cached_value(address code_begin) {
   // The word containing the cached value is at the end of this IC buffer
   uintptr_t *p = (uintptr_t *)(code_begin + ic_stub_code_size() - wordSize);

@@ -3249,6 +3249,8 @@ void SharedRuntime::generate_deopt_blob() {
     _deopt_blob->set_implicit_exception_uncommon_trap_offset(implicit_exception_uncommon_trap_offset);
   }
 #endif
+  // ResourceMark m;
+  // Disassembler::decode(_deopt_blob, tty);
 }
 
 #ifdef COMPILER2
@@ -3675,7 +3677,9 @@ RuntimeStub* SharedRuntime::generate_resolve_blob(address destination, const cha
 
   // return the  blob
   // frame_size_words or bytes??
-  return RuntimeStub::new_runtime_stub(name, &buffer, frame_complete, frame_size_in_words, oop_maps, true);
+  RuntimeStub* stub = RuntimeStub::new_runtime_stub(name, &buffer, frame_complete, frame_size_in_words, oop_maps, true);
+  // Disassembler::decode(stub, tty);
+  return stub;
 }
 
 

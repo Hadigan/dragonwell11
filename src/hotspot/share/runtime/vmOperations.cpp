@@ -128,7 +128,12 @@ void VM_Deoptimize::doit() {
 }
 
 void VM_MarkActiveNMethods::doit() {
+  tty->print_cr("VM_MarkActiveNMethods::doit");
   NMethodSweeper::mark_active_nmethods();
+}
+
+void VM_ReorderNMethods::doit() {
+  NMethodSweeper::reorder_nmethods();
 }
 
 VM_DeoptimizeFrame::VM_DeoptimizeFrame(JavaThread* thread, intptr_t* id, int reason) {

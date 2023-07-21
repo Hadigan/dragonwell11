@@ -101,6 +101,7 @@ CodeBlob::CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& la
   S390_ONLY(_ctable_offset = 0;) // avoid uninitialized fields
 }
 
+// for native
 CodeBlob::CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& layout, CodeBuffer* cb, int frame_complete_offset, int frame_size, OopMapSet* oop_maps, bool caller_must_gc_arguments) :
   _name(name),
   _size(layout.size()),
@@ -131,6 +132,85 @@ CodeBlob::CodeBlob(const char* name, CompilerType type, const CodeBlobLayout& la
   S390_ONLY(_ctable_offset = 0;) // avoid uninitialized fields
 }
 
+CodeBlob::CodeBlob(CodeBlob* src, bool is_native) :
+  _name(src->_name),
+  _size(src->_size),
+  _header_size(src->_header_size),
+  _frame_complete_offset(src->_frame_complete_offset),
+  _data_offset(src->_data_offset),
+  _frame_size(src->_frame_size),
+  _strings(CodeStrings()),
+  _caller_must_gc_arguments(src->_caller_must_gc_arguments),
+  _code_begin(src->code_begin() - (address)src + (address)this),
+  _code_end(src->code_end() - (address)src + (address)this),
+  _data_end(src->data_end() - (address)src + (address)this),
+  _relocation_begin((address)src->relocation_begin() - (address)src + (address)this),
+  _relocation_end((address)src->relocation_end() - (address)src + (address)this),
+  _content_begin(src->content_begin() - (address)src + (address)this),
+  _type(src->_type)
+{
+  assert(is_aligned(_size,        oopSize), "unaligned size");
+  assert(is_aligned(_header_size, oopSize), "unaligned size");
+  assert(_data_offset <= _size, "codeBlob is too small");
+  // assert(layout.code_end() == layout.content_end(), "must be the same - see code_end()");
+
+  // TODO
+  // 应该是通过code拷贝的
+  // _strings.copy(src->_strings);
+
+  
+  // replace set_oop_maps(oop_maps);
+  if (src->_oop_maps != NULL) {
+    _oop_maps = (ImmutableOopMapSet*) NEW_C_HEAP_ARRAY(unsigned char, src->_oop_maps->nr_of_bytes(), mtCode);
+    memcpy(_oop_maps, src->_oop_maps, src->_oop_maps->nr_of_bytes());
+  }
+  else {
+    _oop_maps = NULL;
+  }
+  
+  
+  #ifdef COMPILER1
+    // probably wrong for tiered
+    assert(_frame_size >= -1, "must use frame size or -1 for runtime stubs");
+  #endif // COMPILER1
+    S390_ONLY(_ctable_offset = 0;) // avoid uninitialized fields
+}
+
+CodeBlob::CodeBlob(CodeBlob* src) :
+  _name(src->_name),
+  _size(src->_size),
+  _header_size(src->_header_size),
+  _frame_complete_offset(src->_frame_complete_offset),
+  _data_offset(src->_data_offset),
+  _frame_size(src->_frame_size),
+  _strings(CodeStrings()),
+  _caller_must_gc_arguments(src->_caller_must_gc_arguments),
+  _code_begin(src->code_begin() - (address)src + (address)this),
+  _code_end(src->code_end() - (address)src + (address)this),
+  _data_end(src->data_end() - (address)src + (address)this),
+  _relocation_begin((address)src->relocation_begin() - (address)src + (address)this),
+  _relocation_end((address)src->relocation_end() - (address)src + (address)this),
+  _content_begin(src->content_begin() - (address)src + (address)this),
+  _type(src->_type)
+{
+  assert(is_aligned(_size,        oopSize), "unaligned size");
+  assert(is_aligned(_header_size, oopSize), "unaligned size");
+  assert(_data_offset <= _size, "codeBlob is too small");
+  // assert(layout.code_end() == layout.content_end(), "must be the same - see code_end()");
+
+  // TODO
+  // 应该是通过code拷贝的
+  // _strings.copy(src->_strings);
+
+  // replace oops initialization
+  _oop_maps = (ImmutableOopMapSet*) NEW_C_HEAP_ARRAY(unsigned char, src->_oop_maps->nr_of_bytes(), mtCode);
+  memcpy(_oop_maps, src->_oop_maps, src->_oop_maps->nr_of_bytes());
+  #ifdef COMPILER1
+    // probably wrong for tiered
+    assert(_frame_size >= -1, "must use frame size or -1 for runtime stubs");
+  #endif // COMPILER1
+    S390_ONLY(_ctable_offset = 0;) // avoid uninitialized fields
+}
 
 // Creates a simple CodeBlob. Sets up the size of the different regions.
 RuntimeBlob::RuntimeBlob(const char* name, int header_size, int size, int frame_complete, int locs_size)
@@ -263,6 +343,10 @@ void* BufferBlob::operator new(size_t s, unsigned size) throw() {
   return CodeCache::allocate(size, CodeBlobType::NonNMethod);
 }
 
+void* BufferBlob::operator new(size_t s, unsigned size, int code_blob_type) throw() {
+  return CodeCache::allocate(size, code_blob_type);
+}
+
 void BufferBlob::free(BufferBlob *blob) {
   ThreadInVMfromUnknown __tiv;  // get to VM state in case we block on CodeCache_lock
   blob->flush();
@@ -302,7 +386,7 @@ VtableBlob::VtableBlob(const char* name, int size) :
   BufferBlob(name, size) {
 }
 
-VtableBlob* VtableBlob::create(const char* name, int buffer_size) {
+VtableBlob* VtableBlob::create(const char* name, int buffer_size, int code_blob_type) {
   ThreadInVMfromUnknown __tiv;  // get to VM state in case we block on CodeCache_lock
 
   VtableBlob* blob = NULL;
@@ -313,7 +397,7 @@ VtableBlob* VtableBlob::create(const char* name, int buffer_size) {
   assert(name != NULL, "must provide a name");
   {
     MutexLockerEx mu(CodeCache_lock, Mutex::_no_safepoint_check_flag);
-    blob = new (size) VtableBlob(name, size);
+    blob = new (size, code_blob_type) VtableBlob(name, size);
   }
   // Track memory usage statistic after releasing CodeCache_lock
   MemoryService::track_code_cache_memory_usage();

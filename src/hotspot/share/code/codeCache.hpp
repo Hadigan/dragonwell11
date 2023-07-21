@@ -61,7 +61,7 @@
 // Code cache segmentation is controlled by the flag SegmentedCodeCache.
 // If turned off, all code types are stored in a single code heap. By default
 // code cache segmentation is turned on if TieredCompilation is enabled and
-// ReservedCodeCacheSize >= 240 MB.
+// ReservedCodeCacheSize >= 240 MB.·
 //
 // All methods of the CodeCache accepting a CodeBlobType only apply to
 // CodeBlobs of the given type. For example, iteration over the
@@ -76,6 +76,7 @@ class OopClosure;
 class KlassDepChange;
 
 class CodeCache : AllStatic {
+  friend class NMethodSweeper;
   friend class VMStructs;
   friend class JVMCIVMStructs;
   template <class T, class Filter> friend class CodeBlobIterator;
@@ -91,6 +92,9 @@ class CodeCache : AllStatic {
   static GrowableArray<CodeHeap*>* _nmethod_heaps;
   static GrowableArray<CodeHeap*>* _allocable_heaps;
 
+  static GrowableArray<const char*>* _top_n_method_name_table;
+  static GrowableArray<address>* _top_n_method_address_table;
+
   static address _low_bound;                            // Lower bound of CodeHeap addresses
   static address _high_bound;                           // Upper bound of CodeHeap addresses
   static int _number_of_nmethods_with_dependencies;     // Total number of nmethods with dependencies
@@ -103,8 +107,9 @@ class CodeCache : AllStatic {
 
   // CodeHeap management
   static void initialize_heaps();                             // Initializes the CodeHeaps
+  static void initialize_top_n_method_table();
   // Check the code heap sizes set by the user via command line
-  static void check_heap_sizes(size_t non_nmethod_size, size_t profiled_size, size_t non_profiled_size, size_t cache_size, bool all_set);
+  static void check_heap_sizes(size_t non_nmethod_size, size_t profiled_size, size_t non_profiled_size, size_t hot_non_profiled_size, size_t cache_size, bool all_set);
   // Creates a new heap with the given name and size, containing CodeBlobs of the given type
   static void add_heap(ReservedSpace rs, const char* name, int code_blob_type);
   static CodeHeap* get_code_heap_containing(void* p);         // Returns the CodeHeap containing the given pointer, or NULL
@@ -142,8 +147,12 @@ class CodeCache : AllStatic {
   static const GrowableArray<CodeHeap*>* compiled_heaps() { return _compiled_heaps; }
   static const GrowableArray<CodeHeap*>* nmethod_heaps() { return _nmethod_heaps; }
 
+  static const GrowableArray<const char*>* top_n_method_name_table() { return _top_n_method_name_table; }
+  static GrowableArray<address>* top_n_method_address_table() { return _top_n_method_address_table; }
+
   // Allocation/administration
   static CodeBlob* allocate(int size, int code_blob_type, int orig_code_blob_type = CodeBlobType::All); // allocates a new CodeBlob
+  static CodeBlob* allocate_at(int size, size_t offset); // allocates a new CodeBlob at offset in top n CodeHeap
   static void commit(CodeBlob* cb);                        // called when the allocated CodeBlob has been filled
   static int  alignment_unit();                            // guaranteed alignment of all CodeBlobs
   static int  alignment_offset();                          // guaranteed offset of first CodeBlob byte within alignment unit (i.e., allocation header)

@@ -47,10 +47,10 @@
 extern "C" void bad_compiled_vtable_index(JavaThread* thread, oop receiver, int index);
 #endif
 
-VtableStub* VtableStubs::create_vtable_stub(int vtable_index) {
+VtableStub* VtableStubs::create_vtable_stub(int vtable_index, int code_blob_type) {
   // Read "A word on VtableStub sizing" in share/code/vtableStubs.hpp for details on stub sizing.
   const int stub_code_length = code_size_limit(true);
-  VtableStub* s = new(stub_code_length) VtableStub(true, vtable_index);
+  VtableStub* s = new(stub_code_length, code_blob_type) VtableStub(true, vtable_index);
   // Can be NULL if there is no free space in the code cache.
   if (s == NULL) {
     return NULL;
@@ -137,10 +137,10 @@ VtableStub* VtableStubs::create_vtable_stub(int vtable_index) {
 }
 
 
-VtableStub* VtableStubs::create_itable_stub(int itable_index) {
+VtableStub* VtableStubs::create_itable_stub(int itable_index, int code_blob_type) {
   // Read "A word on VtableStub sizing" in share/code/vtableStubs.hpp for details on stub sizing.
   const int stub_code_length = code_size_limit(false);
-  VtableStub* s = new(stub_code_length) VtableStub(false, itable_index);
+  VtableStub* s = new(stub_code_length, code_blob_type) VtableStub(false, itable_index);
   // Can be NULL if there is no free space in the code cache.
   if (s == NULL) {
     return NULL;

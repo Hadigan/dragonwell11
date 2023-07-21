@@ -277,7 +277,9 @@ void CompileTask::print_impl(outputStream* st, Method* method, int compile_id, i
   if (method == NULL) {
     st->print("(method)");
   } else {
-    method->print_short_name(st);
+    // method->print_short_name(st);
+    ResourceMark rm;
+    st->print("%s", method->name_and_sig_as_C_string());
     if (is_osr_method) {
       st->print(" @ %d", osr_bci);
     }

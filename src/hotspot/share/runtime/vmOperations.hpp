@@ -134,6 +134,7 @@
   template(PrintMetadata)                         \
   template(GTestExecuteAtSafepoint)               \
   template(JFROldObject)                          \
+  template(ReorderNMethods)                       \
 
 class VM_Operation: public CHeapObj<mtInternal> {
  public:
@@ -328,6 +329,14 @@ class VM_MarkActiveNMethods: public VM_Operation {
  public:
   VM_MarkActiveNMethods() {}
   VMOp_Type type() const                         { return VMOp_MarkActiveNMethods; }
+  void doit();
+  bool allow_nested_vm_operations() const        { return true; }
+};
+
+class VM_ReorderNMethods: public VM_Operation {
+ public:
+  VM_ReorderNMethods() {}
+  VMOp_Type type() const                         { return VMOp_ReorderNMethods; }
   void doit();
   bool allow_nested_vm_operations() const        { return true; }
 };
