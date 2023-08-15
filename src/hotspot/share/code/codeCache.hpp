@@ -419,8 +419,13 @@ struct NMethodFilter {
   static const GrowableArray<CodeHeap*>* heaps() { return CodeCache::nmethod_heaps(); }
 };
 
+struct CodeBolbFilter {
+  static bool apply(CodeBlob* cb) { return true; }
+  static const GrowableArray<CodeHeap*>* heaps() { return CodeCache::heaps(); }
+};
 
 typedef CodeBlobIterator<CompiledMethod, CompiledMethodFilter> CompiledMethodIterator;
 typedef CodeBlobIterator<nmethod, NMethodFilter> NMethodIterator;
+typedef CodeBlobIterator<CodeBlob, CodeBolbFilter> CodeblobIterator;
 
 #endif // SHARE_VM_CODE_CODECACHE_HPP

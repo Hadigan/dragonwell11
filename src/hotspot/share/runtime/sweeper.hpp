@@ -79,6 +79,8 @@ class NMethodSweeper : public AllStatic {
                                                   //   2) not_entrant -> zombie
   // Stat counters
   static long      _time_counter_for_copy;
+  static long      _time_counter_for_print;
+  static bool      _print_done;
   static bool      _copy_done;
   static long      _total_nof_methods_reclaimed;    // Accumulated nof methods flushed
   static long      _total_nof_c2_methods_reclaimed; // Accumulated nof C2-compiled methods flushed
@@ -131,6 +133,7 @@ class NMethodSweeper : public AllStatic {
   static nmethod* copy_nm_to_topn_codeheap(nmethod* nm);
   static int copy_topn_methods();
   static void copy_normal_nmethods();
+  static void print_codeblobs();
 };
 
 #endif // SHARE_VM_RUNTIME_SWEEPER_HPP

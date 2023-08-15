@@ -86,7 +86,10 @@
           "output blob size instead of code size using GenerateEvent")      \
   experimental(ccstr, ReorderType, NULL,                                    \
           "JACO or DCM, default is JACO")                                   \
-
+  experimental(intx, PrintCodeblobTime, 60,                                        \
+          "if sweeper timecount > PrintCodeblobTime, print all codeblob info")    \
+  experimental(ccstr, CodeblobFilePath, "./jvm.codecache",                        \
+          "File path which saves codeblob")                                       \
   //add new AJDK specific flags here
 
 
